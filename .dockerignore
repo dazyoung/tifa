@@ -1,0 +1,11 @@
+# Allow-list: the image needs only the project metadata, the lock file and the package source.
+# Everything else (.env files, credentials written by CI, tests, data) stays out of the build context.
+*
+!pyproject.toml
+!uv.lock
+!README.md
+!LICENSE
+!src/
+**/__pycache__
+**/*.pyc
+**/.DS_Store

@@ -1,0 +1,147 @@
+name: TfL canary
+
+# Once a day, fetch TfL's line status anonymously and check that it still has the shape Tifa's parser expects:
+# the same lines and modes, known severities and disruption categories, and fields of the expected types.
+# A failure opens an issue (or comments on the open one).
+on:
+  schedule:
+    - cron: "17 6 * * *" # 06:17 UTC daily
+  workflow_dispatch:
+
+permissions: {}
+
+env:
+  UV_VERSION: "0.12.24"
+  TFL_URL: https://api.tfl.gov.uk/Line/Mode/tube,elizabeth-line,overground,dlr/Status
+
+jobs:
+  shape:
+    name: TfL response shape
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.13"
+      - name: Install
+        run: uv sync --locked --no-dev
+      - name: Fetch line status (anonymous)
+        run: |
+          curl --fail --silent --show-error --compressed --max-time 30 \
+            --retry 3 --retry-delay 20 --retry-all-errors \
+            -H 'Accept: application/json' -H 'User-Agent: tifa-canary' \
+            -o "$RUNNER_TEMP/status.json" "$TFL_URL"
+      - name: Check the shape
+        run: |
+          uv run --no-sync python - "$RUNNER_TEMP/status.json" <<'PY'
+          import json
+          import sys
+
+          from tifa.core import episodes, tfl
+
+          # Line ids as of the 2024 Overground names. A change here is worth a look before Tifa records it.
+          LINES = {
+              "bakerloo", "central", "circle", "district", "hammersmith-city", "jubilee", "metropolitan",
+              "northern", "piccadilly", "victoria", "waterloo-city", "elizabeth", "dlr",
+              "liberty", "lioness", "mildmay", "suffragette", "weaver", "windrush",
+          }
+          CATEGORIES = {"RealTime", "PlannedWork", "Information", "Event", "Crowding", "StatusAlert", "Undefined"}
+
+          problems = []
+          raw = json.load(open(sys.argv[1], encoding="utf-8"))
+          if not isinstance(raw, list):
+              sys.exit(f"expected a JSON list, got {type(raw).__name__}")
+
+          ok, code = tfl.validate_payload(raw, LINES)
+          if not ok:
+              problems.append(f"validate_payload rejected the response ({code})")
+
+          ids = {line.get("id") for line in raw if isinstance(line, dict)}
+          if missing := sorted(LINES - ids):
+              problems.append(f"lines missing: {', '.join(missing)}")
+          if extra := sorted(str(i) for i in ids - LINES):
+              problems.append(f"new lines: {', '.join(extra)}")
+
+          def check(where, value, kind, optional=False):
+              if value is None and optional:
+                  return
+              if not isinstance(value, kind) or isinstance(value, bool) and kind is not bool:
+                  problems.append(f"{where}: expected {kind.__name__}, got {type(value).__name__}")
+
+          for line in raw:
+              if not isinstance(line, dict):
+                  problems.append(f"a line is a {type(line).__name__}, not an object")
+                  continue
+              lid = line.get("id")
+              check(f"{lid}.id", lid, str)
+              check(f"{lid}.name", line.get("name"), str)
+              check(f"{lid}.modeName", line.get("modeName"), str)
+              if line.get("modeName") not in tfl.MODE_ORDER:
+                  problems.append(f"{lid}: unknown mode {line.get('modeName')!r}")
+              statuses = line.get("lineStatuses")
+              check(f"{lid}.lineStatuses", statuses, list)
+              for i, s in enumerate(statuses if isinstance(statuses, list) else ()):
+                  where = f"{lid}.lineStatuses[{i}]"
+                  if not isinstance(s, dict):
+                      problems.append(f"{where}: not an object")
+                      continue
+                  sev = s.get("statusSeverity")
+                  check(f"{where}.statusSeverity", sev, int)
+                  if isinstance(sev, int) and sev not in tfl.RANK:
+                      problems.append(f"{where}: unknown severity {sev} ({s.get('statusSeverityDescription')!r})")
+                  check(f"{where}.statusSeverityDescription", s.get("statusSeverityDescription"), str)
+                  check(f"{where}.reason", s.get("reason"), str, optional=True)
+                  periods = s.get("validityPeriods")
+                  check(f"{where}.validityPeriods", periods, list, optional=True)
+                  for j, p in enumerate(periods if isinstance(periods, list) else ()):
+                      check(f"{where}.validityPeriods[{j}].isNow", p.get("isNow") if isinstance(p, dict) else p, bool)
+                  disruption = s.get("disruption")
+                  check(f"{where}.disruption", disruption, dict, optional=True)
+                  if isinstance(disruption, dict) and disruption.get("category") not in CATEGORIES:
+                      problems.append(f"{where}: unknown disruption category {disruption.get('category')!r}")
+
+          obs, meta = episodes.observe(raw)
+          now = tfl.current(raw)
+          if now.get("total") != len(raw):
+              problems.append(f"current() counted {now.get('total')} lines, the response has {len(raw)}")
+          print(f"{len(raw)} lines, {now.get('disrupted')} disrupted, {len(obs)} observations recorded")
+
+          if problems:
+              print("\n".join(f"::error::{p}" for p in problems))
+              sys.exit(1)
+          print("TfL's response has the expected shape.")
+          PY
+
+  report:
+    name: Open an issue
+    needs: shape
+    if: failure() && github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Open or update the canary issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: "TfL canary failed: line-status response changed or unavailable"
+        run: |
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "in:title \"$TITLE\"" \
+            --json number,title --jq "map(select(.title == env.TITLE)) | .[0].number // empty")
+          if [[ -n $existing ]]; then
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "Failed again: $run_url"
+          else
+            body="The daily TfL canary failed: $run_url
+
+          Either TfL's line-status response changed shape (lines, modes, severities, disruption categories or field
+          types) or the API was unavailable. Check the run log, then update \`tifa.core\` and its fixtures if the
+          change is real. Close this issue when the canary passes again."
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body "$body"
+          fi

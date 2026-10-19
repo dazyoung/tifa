@@ -1,0 +1,66 @@
+[project]
+name = "tifa"
+version = "0.1.0"
+description = "Always-on record of London TfL line disruptions, served through an open API and an MCP server"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Framework :: FastAPI",
+    "Private :: Do Not Upload",
+]
+dependencies = [
+    "fastapi>=0.115",
+    # Plain uvicorn with the httptools parser: [standard] would add uvloop, watchfiles, websockets and PyYAML
+    # (about 20 MB in the image) for no gain at this traffic.
+    "uvicorn>=0.30",
+    "httptools>=0.6",
+    "httpx>=0.27",
+    "google-auth[requests]>=2.30",
+    "google-cloud-firestore>=2.16",
+    # The contract's FastMCP API (stateless_http, json_response, transport_security in the constructor) is 1.x;
+    # 2.x renamed it to MCPServer and moved those options, so stay on 1.x until the MCP layer moves.
+    "mcp>=1.23,<2",
+]
+
+[project.scripts]
+tifa = "tifa.main:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "respx>=0.21",
+    "ruff>=0.6",
+]
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tifa"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+# importlib mode lets test files in different folders share a name (tests/api/test_app.py, tests/poller/test_app.py).
+addopts = "-ra --import-mode=importlib"
+# Plain `async def test_...` functions run on asyncio without a marker.
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "emulator: needs the Firestore emulator (FIRESTORE_EMULATOR_HOST); CI runs these in a job of their own",
+    "network: calls a live external service; never run in CI",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]

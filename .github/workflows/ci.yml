@@ -1,0 +1,238 @@
+name: CI
+
+# Pull requests run this directly; pushes to main run it through deploy.yml before deploying.
+on:
+  pull_request:
+  merge_group:
+  workflow_dispatch:
+  workflow_call:
+    secrets:
+      GITLEAKS_PRIVATE_TERMS:
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  UV_VERSION: "0.12.24"
+  FORCE_COLOR: "1"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.13"
+      - name: Install
+        run: uv sync --locked
+      - name: Ruff
+        run: uv run ruff check --output-format=github .
+      - name: Shell scripts
+        run: shellcheck --version && shellcheck infra/*.sh
+      - name: Workflows
+        run: >-
+          docker run --rm -v "$PWD:/repo" -w /repo
+          rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+          -color
+
+  test:
+    name: Tests (Python ${{ matrix.python }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ matrix.python }}
+      - name: Install
+        run: uv sync --locked
+      - name: pytest
+        run: uv run pytest -q -m "not emulator and not network"
+      # Placeholder until the API publishes a snapshot: when docs/openapi.json exists, the generated schema must match.
+      - name: OpenAPI snapshot
+        if: matrix.python == '3.13'
+        env:
+          SNAPSHOT: docs/openapi.json
+        run: |
+          if [ ! -f "$SNAPSHOT" ]; then
+            echo "::notice::No $SNAPSHOT yet; skipping the OpenAPI diff."
+            exit 0
+          fi
+          uv run python -c 'import json, sys; from tifa.api.app import app; json.dump(app.openapi(), sys.stdout, indent=2, sort_keys=True); print()' > "$RUNNER_TEMP/openapi.json"
+          diff -u "$SNAPSHOT" "$RUNNER_TEMP/openapi.json"
+
+  emulator:
+    name: Emulator tests (Firestore)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      EMULATOR_IMAGE: gcr.io/google.com/cloudsdktool/google-cloud-cli:588.0.0-emulators@sha256:be2f0e582a94c9e06e7a384fe2b3b39d590eeb8da65a110eda991598c100fe80
+      FIRESTORE_EMULATOR_HOST: localhost:8080
+      GOOGLE_CLOUD_PROJECT: demo-tifa
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Start the Firestore emulator
+        run: |
+          docker run -d --name firestore -p 127.0.0.1:8080:8080 "$EMULATOR_IMAGE" \
+            gcloud emulators firestore start --host-port=0.0.0.0:8080 --quiet
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: "3.13"
+      - name: Install
+        run: uv sync --locked
+      - name: Wait for the emulator
+        run: |
+          for _ in $(seq 90); do
+            if curl -fsS "http://$FIRESTORE_EMULATOR_HOST/" >/dev/null 2>&1; then
+              echo "Firestore emulator is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs firestore
+          exit 1
+      # Every emulator test in the suite (store, poller, integration), not only tests/store.
+      - name: pytest (emulator)
+        run: uv run pytest -q -m emulator
+      - name: Emulator log
+        if: failure()
+        run: docker logs firestore
+
+  image:
+    name: Container image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          push: false
+          provenance: false
+          tags: tifa:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Size
+        run: |
+          bytes=$(docker image inspect tifa:ci --format '{{.Size}}')
+          echo "Image size (uncompressed): $((bytes / 1024 / 1024)) MiB" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Both roles load
+        run: |
+          for role in api poller; do
+            docker run --rm -e TIFA_ROLE="$role" tifa:ci python -m tifa.main --check
+          done
+      - name: The API starts and answers /healthz
+        run: |
+          docker run -d --name api -p 127.0.0.1:8080:8080 -e TIFA_ROLE=api tifa:ci
+          for _ in $(seq 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/healthz || true)
+            case "$code" in
+              200|503) echo "/healthz answered $code"; docker logs api; exit 0 ;;
+            esac
+            sleep 1
+          done
+          docker logs api
+          exit 1
+
+  gitleaks:
+    name: Secret scan (full history)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GITLEAKS_VERSION: "8.30.1"
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install gitleaks
+        run: |
+          archive="$RUNNER_TEMP/gitleaks.tar.gz"
+          curl -fsSL --retry 3 -o "$archive" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  ${archive}" | sha256sum --check --strict -
+          tar -xzf "$archive" -C "$RUNNER_TEMP" gitleaks
+      - name: Scan every commit
+        run: '"$RUNNER_TEMP/gitleaks" git --config .gitleaks.toml --redact --verbose --no-banner .'
+      # The next two steps stop a pull request from quietly weakening the scan with its own rules, ignore list or
+      # inline allow comments. A pull request can still edit this workflow, so review changes to it.
+      - name: No new inline allow comments
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+        run: |
+          # The marker is written as a character class so this step does not match itself. Lines are counted, never
+          # printed: an allowed line usually holds the secret.
+          added=$(git diff --unified=0 --no-color "$BASE_SHA" HEAD | grep -E '^\+' | grep -vE '^\+\+\+ ' \
+            | grep -cE 'gitleaks:[a]llow' || true)
+          if [ "$added" -gt 0 ]; then
+            files=$(git diff --name-only -G 'gitleaks:[a]llow' "$BASE_SHA" HEAD | paste -sd ' ' -)
+            echo "::error::This change adds $added inline gitleaks allow comment(s), in: $files. Fix the finding instead."
+            exit 1
+          fi
+      - name: Scan with the base branch's rules and ignore list
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+        run: |
+          # gitleaks reads .gitleaksignore from the working tree, so put the base branch's copy (or none) there first.
+          git show "$BASE_SHA:.gitleaksignore" > .gitleaksignore 2>/dev/null || rm -f .gitleaksignore
+          if git show "$BASE_SHA:.gitleaks.toml" > "$RUNNER_TEMP/base-gitleaks.toml" 2>/dev/null; then
+            "$RUNNER_TEMP/gitleaks" git --config "$RUNNER_TEMP/base-gitleaks.toml" --redact --verbose --no-banner .
+          else
+            echo "The base branch has no .gitleaks.toml yet."
+          fi
+      # Private terms come from a repository secret (one regular expression), so the public rules never spell them
+      # out. Findings are counted, not shown, as a file name or line could spell the term; reproduce them locally
+      # (docs/operations.md, "Secret scanning"). Forks and Dependabot get no secrets, so their runs skip this.
+      - name: Scan for private terms
+        env:
+          TERMS: ${{ secrets.GITLEAKS_PRIVATE_TERMS }}
+        run: |
+          if [ -z "$TERMS" ]; then
+            echo "::warning::GITLEAKS_PRIVATE_TERMS is not available to this run, so private terms were not checked."
+            exit 0
+          fi
+          config="$RUNNER_TEMP/private-terms.toml"
+          report="$RUNNER_TEMP/private-terms.json"
+          q="'''"
+          printf '[[rules]]\nid = "private-term"\ndescription = "A private term"\nregex = %s(?i)(?:%s)%s\n' \
+            "$q" "$TERMS" "$q" > "$config"
+          status=0
+          "$RUNNER_TEMP/gitleaks" git --config "$config" --redact --no-banner --log-level error --exit-code 3 \
+            --report-format json --report-path "$report" . 2>/dev/null || status=$?
+          case $status in
+            0) echo "No private terms found." ;;
+            3) echo "::error::Found $(jq length "$report") private term(s) in the history. Run the scan locally to see where."
+               exit 1 ;;
+            *) echo "::error::gitleaks failed (exit $status): is GITLEAKS_PRIVATE_TERMS a valid regular expression?"
+               exit 1 ;;
+          esac

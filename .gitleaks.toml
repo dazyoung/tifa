@@ -1,0 +1,115 @@
+# Secret and privacy scan for a public repository (gitleaks v8.25 or later).
+# The default rules find credentials; the rules below also keep out anything that identifies the people or the
+# environment that run Tifa. Patterns here are written so that this file does not match itself.
+# Pre-commit scans staged changes; CI scans the full history.
+# Private terms (names that must not appear here) are deliberately not listed in this public file: CI reads them
+# from a repository secret, and maintainers add them locally with a config that extends this one
+# (docs/operations.md, "Secret scanning").
+
+title = "Tifa"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "gcp-billing-account-id"
+description = "Google Cloud billing account ID"
+regex = '''\b[0-9A-F]{6}-[0-9A-F]{6}-[0-9A-F]{6}\b'''
+
+[[rules]]
+id = "gcp-service-account-email"
+description = "Google Cloud service account or service agent email (they name the project)"
+regex = '''(?i)\b[a-z0-9._-]+@[a-z0-9.-]*gserviceaccount\.com\b'''
+[[rules.allowlists]]
+description = "Fixed Google-owned identities that name no project"
+regexTarget = "match"
+regexes = ['''(?i)^billing-budget-alert@system\.gserviceaccount\.com$''']
+
+[[rules]]
+id = "email-address"
+description = "Email address (use example.com or example.org in docs and tests)"
+regex = '''(?i)\b[a-z0-9][a-z0-9._%+-]*@(?:[a-z0-9-]+\.)+[a-z]{2,}\b'''
+[[rules.allowlists]]
+description = "No-reply senders, documentation domains and Google-owned system identities"
+regexTarget = "match"
+regexes = [
+  '''(?i)^noreply@''',
+  '''(?i)^no-reply@''',
+  '''(?i)@users\.noreply\.github\.com$''',
+  '''(?i)@(?:[a-z0-9-]+\.)*example\.(?:com|org|net)$''',
+  '''(?i)^billing-budget-alert@system\.gserviceaccount\.com$''',
+]
+
+[[rules]]
+id = "tfl-app-key"
+description = "TfL app_key with a value"
+regex = '''(?i)\bapp_key=([^\s&"'<>{}()\[\]$%*]{6,})'''
+secretGroup = 1
+[[rules.allowlists]]
+description = "Placeholders and redaction markers"
+stopwords = ["redacted", "placeholder", "example", "your", "dummy", "fake", "test", "xxxx"]
+
+[[rules]]
+id = "private-ipv4"
+description = "Private, shared (CGNAT) or link-local IPv4 address (use 192.0.2.0/24, 198.51.100.0/24 or 203.0.113.0/24)"
+regex = '''\b(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3}|169\.254\.\d{1,3}\.\d{1,3})\b'''
+[[rules.allowlists]]
+description = "The cloud metadata server, which is the same address everywhere"
+regexTarget = "match"
+regexes = ['''^169\.254\.169\.254$''']
+
+[[rules]]
+id = "private-ipv6"
+description = "IPv6 unique local address (fc00::/7), as used by private networks and tailnets (use 2001:db8::/32)"
+regex = '''(?i)\bf[cd][0-9a-f]{2}:(?:[0-9a-f]{0,4}:){1,6}[0-9a-f]{0,4}'''
+
+[[rules]]
+id = "tailnet-host"
+description = "Tailscale tailnet host name"
+regex = '''(?i)[a-z0-9-]*\.ts\.net\b'''
+
+[[rules]]
+id = "macos-home-path"
+description = "macOS home directory path"
+regex = '''/[U]sers/[^/\s"'`]+'''
+
+# Google Cloud project IDs and numbers. Placeholders (your-project-id, example-*, demo-* for emulators) are fine.
+[[rules]]
+id = "gcp-project-resource-path"
+description = "Google Cloud resource name with a real project ID or number (use a placeholder such as PROJECT_ID)"
+regex = '''\bprojects/([a-z][a-z0-9-]{4,28}[a-z0-9]|[0-9]{6,})/[A-Za-z]'''
+secretGroup = 1
+[[rules.allowlists]]
+description = "Placeholder and emulator project IDs"
+regexes = ['''^(?:demo|example|your|my)-[a-z0-9-]+$|^project-id$|placeholder''']
+
+[[rules]]
+id = "gcp-artifact-registry-path"
+description = "Artifact Registry image path (it names the project; use a placeholder such as PROJECT_ID)"
+regex = '''-docker\.pkg\.dev/([a-z][a-z0-9-]{4,28}[a-z0-9])/'''
+secretGroup = 1
+[[rules.allowlists]]
+description = "Placeholder and emulator project IDs"
+regexes = ['''^(?:demo|example|your|my)-[a-z0-9-]+$|^project-id$|placeholder''']
+
+[[rules]]
+id = "gcp-project-id-setting"
+description = "Google Cloud project ID in a setting or on a command line (use a placeholder, or demo-* for emulators)"
+regex = '''(?:\b(?i:GCP_PROJECT_ID|GOOGLE_CLOUD_PROJECT|GCLOUD_PROJECT|CLOUDSDK_CORE_PROJECT|PROJECT_ID)["']?\s*[=:]\s*["']?|\b(?i:project)\s*=\s*["']|--project[= ]["']?|\bconfig set project\s+["']?)([a-z][a-z0-9-]{4,28}[a-z0-9])(?:["'\s,;)}\]]|$)'''
+secretGroup = 1
+[[rules.allowlists]]
+description = "Placeholder and emulator project IDs"
+regexes = ['''^(?:demo|example|your|my)-[a-z0-9-]+$|^project-id$|placeholder''']
+
+[[rules]]
+id = "cloud-run-url"
+description = "Cloud Run service URL (it carries the project number or a project hash)"
+regex = '''(?i)\b[a-z0-9-]+-(?:[0-9]{6,}\.[a-z]+-[a-z]+[0-9]+|[a-z0-9]{10}-[a-z]{2})(?:\.a)?\.run\.app\b'''
+
+[[allowlists]]
+description = "Generated or vendored paths"
+paths = [
+  '''(?:^|/)\.venv/''',
+  '''(?:^|/)\.git/''',
+  '''(?:^|/)(?:\.pytest_cache|\.ruff_cache|__pycache__)/''',
+]

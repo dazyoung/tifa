@@ -1,0 +1,20 @@
+# pre-commit install   (once per clone; needs uv, and Go or a gitleaks binary for the gitleaks hook)
+# pre-commit run --all-files
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: 83d9cd684c87d95d656c1458ef04895a7f1cbd8e  # frozen: v8.30.1
+    hooks:
+      # `gitleaks git --pre-commit --staged` is the current form of `gitleaks protect --staged`;
+      # it reads .gitleaks.toml from the repository root, or $GITLEAKS_CONFIG when set (a config that extends
+      # it with private terms; see docs/operations.md, "Secret scanning").
+      - id: gitleaks
+
+  - repo: local
+    hooks:
+      # Ruff from uv.lock, so the hook and CI always run the same version.
+      - id: ruff
+        name: ruff check
+        entry: uv run --frozen ruff check --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true

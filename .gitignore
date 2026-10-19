@@ -1,0 +1,48 @@
+# Python and tooling
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Local configuration and credentials: never committed
+.env
+.env.*
+*.env
+infra/.env
+!infra/env.example
+*.key
+*.json.key
+*.pem
+*.p12
+credentials*.json
+service-account*.json
+gha-creds-*.json
+
+# Data: TfL's FOI release (the zip, a folder of its CSVs, anything derived), imports, exports and local runs.
+# Small test fixtures under tests/fixtures/ are the exception.
+/data/
+/foi/
+foi-*/
+*.zip
+*.jsonl
+*.jsonl.gz
+[12][0-9][0-9][0-9].csv
+[Nn]otes.csv
+!tests/fixtures/**/foi-*/
+!tests/fixtures/**/*.zip
+!tests/fixtures/**/*.jsonl
+!tests/fixtures/**/*.jsonl.gz
+!tests/fixtures/**/[12][0-9][0-9][0-9].csv
+!tests/fixtures/**/[Nn]otes.csv
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/
