@@ -105,6 +105,9 @@ regexes = ['''^(?:demo|example|your|my)-[a-z0-9-]+$|^project-id$|placeholder''']
 id = "cloud-run-url"
 description = "Cloud Run service URL (it carries the project number or a project hash)"
 regex = '''(?i)\b[a-z0-9-]+-(?:[0-9]{6,}\.[a-z]+-[a-z]+[0-9]+|[a-z0-9]{10}-[a-z]{2})(?:\.a)?\.run\.app\b'''
+[[rules.allowlists]]
+description = "The public API's own address, which the README and docs publish (its numeric form stays private)"
+regexes = ['''^tifa-api-dh52427ooa-ew\.a\.run\.app$''']
 
 [[allowlists]]
 description = "Generated or vendored paths"
