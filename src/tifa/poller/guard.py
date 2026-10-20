@@ -98,6 +98,11 @@ METRIC_SENT_BYTES = "run.googleapis.com/container/network/sent_bytes_count"
 METRIC_BILLABLE = "run.googleapis.com/container/billable_instance_time"
 
 
+# Polls land a few seconds into their minute and the heartbeat is the run's own time, so a run due "120 s after the
+# last" would wait for the poll after that one whenever this poll came a second or two earlier than the last.
+DUE_SLACK = 10  # seconds
+
+
 class GuardError(RuntimeError):
     """A Google call that failed. Messages name the API and the HTTP status, never a URL, token or project."""
 
@@ -716,7 +721,7 @@ class Guard:
     # -- from the poll path
 
     def maybe_run(self, now_ts: int) -> GuardRun | None:
-        """Run if the last run (on any instance) was at least `guard_every` seconds ago. Never raises.
+        """Run if the last run (on any instance) was at least `guard_every` seconds ago, less `DUE_SLACK`. Never raises.
 
         In mode off it only checks, as often, whether a closure the guard applied has ended and must be undone;
         without an Invoker it does nothing at all."""
@@ -732,10 +737,10 @@ class Guard:
                 self._skip_until = now_ts + self.limits.guard_every
                 return self._release(now_ts, doc)
             beat = _epoch((doc or {}).get("heartbeat")) if isinstance(doc, Mapping) else None
-            if beat is not None and 0 <= now_ts - beat < self.limits.guard_every:
-                self._skip_until = beat + self.limits.guard_every
+            if beat is not None and 0 <= now_ts - beat < self.limits.guard_every - DUE_SLACK:
+                self._skip_until = beat + self.limits.guard_every - DUE_SLACK
                 return None
-            self._skip_until = now_ts + self.limits.guard_every
+            self._skip_until = now_ts + self.limits.guard_every - DUE_SLACK
             return self._run(now_ts, doc)
         except Exception as exc:
             log.error("guard run failed: %s", _brief(exc))

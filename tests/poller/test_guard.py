@@ -537,6 +537,15 @@ def test_runs_at_most_every_two_minutes_across_instances():
     assert a.maybe_run(NOW + 240) is not None
 
 
+def test_a_poll_slightly_early_in_its_minute_still_finds_the_guard_due():
+    store = MemoryStore()
+    guard, _, mon, _ = make_guard(store)
+    assert guard.maybe_run(NOW + 7) is not None  # this run came 7 s into its minute
+    assert guard.maybe_run(NOW + 65) is None
+    assert guard.maybe_run(NOW + 125) is not None  # two minutes later, though only 118 s after the last run
+    assert mon.recent_calls == 2
+
+
 def test_a_monitoring_failure_is_recorded_and_changes_nothing():
     guard, store, mon, inv = make_guard()
     mon.fail = GuardError("monitoring: HTTP 503", status=503)
