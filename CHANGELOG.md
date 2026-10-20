@@ -85,6 +85,7 @@ The REST API is versioned separately (`/v1`); breaking API changes get a new pre
 
 ### Fixed
 
+- The README and the API and MCP docs give the live service's address instead of a placeholder.
 - The health route is `/health` on both services (was `/healthz`): Cloud Run reserves some paths that end in
   `z` and answers them itself with a 404, so the deployed API's health check never reached Tifa.
 - `infra/post-deploy.sh`: the smoke tests no longer stop silently part-way when a response header is missing.

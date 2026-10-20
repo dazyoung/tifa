@@ -9,9 +9,9 @@ TfL publishes only the status right now. Tifa remembers it, so you can ask how o
 failure last month, how much of last week the network ran a good service, or what was disrupted on the night the
 clocks went back.
 
-- **Live service:** `<base-url>` (the address will be published here when the service is live)
-- **API docs:** `<base-url>/docs` (interactive), [docs/api.md](docs/api.md)
-- **MCP:** `<base-url>/mcp`, see [docs/mcp.md](docs/mcp.md)
+- **Live service:** https://tifa-api-dh52427ooa-ew.a.run.app
+- **API docs:** https://tifa-api-dh52427ooa-ew.a.run.app/docs (interactive), [docs/api.md](docs/api.md)
+- **MCP:** `https://tifa-api-dh52427ooa-ew.a.run.app/mcp`, see [docs/mcp.md](docs/mcp.md)
 
 **Powered by TfL Open Data.** Contains data from Transport for London, re-used under TfL's open data terms (based on
 the Open Government Licence v2.0). **Tifa is not affiliated with or endorsed by Transport for London.** It uses no
@@ -22,20 +22,20 @@ response and MCP result carries that line.
 
 ```sh
 # what is disrupted right now
-curl -s <base-url>/v1/status | jq '.data.lines[] | select(.good | not) | {name, status, reasons}'
+curl -s https://tifa-api-dh52427ooa-ew.a.run.app/v1/status | jq '.data.lines[] | select(.good | not) | {name, status, reasons}'
 
 # the Central line's unplanned disruptions in October, with their causes
-curl -s '<base-url>/v1/disruptions?line=central&from=2026-10-01&to=2026-10-31&planned=false' \
+curl -s 'https://tifa-api-dh52427ooa-ew.a.run.app/v1/disruptions?line=central&from=2026-10-01&to=2026-10-31&planned=false' \
   | jq '.data.episodes[] | {start, end, status, cause, reason}'
 
 # how the network did over the last 30 days
-curl -s '<base-url>/v1/stats?span=30d&end=now' | jq '.data | {good_pct, unplanned, planned, most_disrupted}'
+curl -s 'https://tifa-api-dh52427ooa-ew.a.run.app/v1/stats?span=30d&end=now' | jq '.data | {good_pct, unplanned, planned, most_disrupted}'
 ```
 
 Add Tifa to Claude Code (or any MCP client; [docs/mcp.md](docs/mcp.md) covers the others):
 
 ```sh
-claude mcp add --transport http tifa <base-url>/mcp
+claude mcp add --transport http tifa https://tifa-api-dh52427ooa-ew.a.run.app/mcp
 ```
 
 ## What the data means
