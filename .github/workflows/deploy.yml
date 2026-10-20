@@ -134,12 +134,12 @@ jobs:
         run: |
           . infra/lib.sh
           url=$(gcloud run services describe "$API_SERVICE" --region="$GCP_REGION" --format='value(status.url)')
-          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$url/healthz" || true)
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$url/health" || true)
           case "$code" in
-            200) echo "API /healthz: 200" ;;
-            503) echo "::notice::API /healthz: 503 (no recent poll yet, or the Scheduler is paused)" ;;
-            403) echo "::notice::API /healthz: 403 (not public yet, run infra/post-deploy.sh, or closed by the guard)" ;;
-            *) echo "::error::API /healthz answered ${code:-nothing}"; exit 1 ;;
+            200) echo "API /health: 200" ;;
+            503) echo "::notice::API /health: 503 (no recent poll yet, or the Scheduler is paused)" ;;
+            403) echo "::notice::API /health: 403 (not public yet, run infra/post-deploy.sh, or closed by the guard)" ;;
+            *) echo "::error::API /health answered ${code:-nothing}"; exit 1 ;;
           esac
 
       - name: Summary

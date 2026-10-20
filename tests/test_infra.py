@@ -186,7 +186,7 @@ case $url in
     grep -q allUsers "$S/iam-run-tifa-api" 2>/dev/null || method=CLOSED
     case "$method ${url#https://*/}" in
       CLOSED*) code=403 ;;
-      "GET healthz") code=503; body='{"error":{"code":"stale"}}' ;;
+      "GET health") code=503; body='{"error":{"code":"stale"}}' ;;
       "GET v1/meta") code=200; body='{"data":{},"meta":{"attribution":"Powered by TfL Open Data"}}' ;;
       "GET v1/status")
         code=200
@@ -726,7 +726,7 @@ def test_post_deploy_smoke_only_changes_nothing(infra):
     proc = infra.run("post-deploy.sh", "smoke")
     assert infra.mutations() == []
     assert proc.returncode == 1  # not wired yet: the API is still closed
-    assert "FAIL  API /healthz answered 403" in proc.stdout and "FAIL  MCP initialize answered 403" in proc.stdout
+    assert "FAIL  API /health answered 403" in proc.stdout and "FAIL  MCP initialize answered 403" in proc.stdout
     assert "ok    tifa-poller has no public invoker" in proc.stdout  # every check ran
 
 

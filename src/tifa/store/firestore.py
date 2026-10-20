@@ -11,10 +11,12 @@ The client honours `FIRESTORE_EMULATOR_HOST`: when it is set, it talks to the em
 from __future__ import annotations
 
 import copy
+import random
 import time
 from collections.abc import Callable
 from typing import Any
 
+from google.api_core import exceptions as gexc
 from google.cloud import firestore
 
 from tifa.store.base import (
@@ -40,6 +42,27 @@ from tifa.store.base import (
     snapshot_from_doc,
     state_from_doc,
 )
+
+COMMIT_ROUNDS = 3  # rounds of the client's own retries before giving up; a round is max_attempts tries
+
+
+def _contended(exc: BaseException) -> bool:
+    """A transaction that lost to concurrent writers (the client's retries ran out), not a real error."""
+    if isinstance(exc, gexc.Aborted):
+        return True
+    return isinstance(exc, ValueError) and "Failed to commit transaction" in str(exc)
+
+
+def _with_rounds(attempt: Callable[[], Any]) -> Any:
+    """Run a transaction, starting it afresh after a short random pause if contention exhausted its retries."""
+    for round_no in range(COMMIT_ROUNDS):
+        try:
+            return attempt()
+        except Exception as exc:
+            if not _contended(exc) or round_no == COMMIT_ROUNDS - 1:
+                raise
+            time.sleep(random.uniform(0.05, 0.25) * (round_no + 1))
+    raise AssertionError("unreachable")
 
 
 class FirestoreStore:
@@ -82,7 +105,7 @@ class FirestoreStore:
             self._apply(transaction, plan_poll(current, write, int(time.time())))
             return APPLIED
 
-        return run(self._db.transaction(max_attempts=self._max_attempts))
+        return _with_rounds(lambda: run(self._db.transaction(max_attempts=self._max_attempts)))
 
     def _apply(self, transaction: firestore.Transaction, plan: Plan) -> None:
         if plan.state is not None:
@@ -118,7 +141,7 @@ class FirestoreStore:
             transaction.set(self._doc(f"months/{month}"), docs[month])
             return docs[month]["rev"]
 
-        return run(self._db.transaction(max_attempts=self._max_attempts))
+        return _with_rounds(lambda: run(self._db.transaction(max_attempts=self._max_attempts)))
 
     def get_polls(self, day: str) -> PollsDoc | None:
         doc = self._read(f"polls/{check_day(day)}")

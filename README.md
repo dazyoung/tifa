@@ -79,7 +79,7 @@ parameters and examples: [docs/api.md](docs/api.md).
 | `/v1/stats?span=&end=&line=` | Figures for 1, 7, 30, 90 or 365 days, against the period before |
 | `/v1/coverage` | When Tifa was watching: spans, gaps, polls and failed polls per day |
 | `/v1/meta` | Sources, categories, causes, licence and the fair-use limits |
-| `/healthz` | The last poll's age and the service's health |
+| `/health` | The last poll's age and the service's health |
 | `/docs`, `/openapi.json` | Interactive documentation and the OpenAPI document |
 | `/mcp` | The MCP server (streamable HTTP, stateless, JSON responses) |
 
@@ -152,7 +152,7 @@ Cloud Scheduler (every minute, UTC) ──► tifa-poller (private)
                                          ├─ check the answer, observe, advance: one Firestore transaction
                                          └─ guard: Cloud Monitoring every 2 minutes; can close tifa-api
 Budget alerts ─► Pub/Sub ─push─────────► tifa-poller /internal/budget
-Anyone ─────────────────────────────────► tifa-api (public): /v1/*, /mcp, /docs, /healthz
+Anyone ─────────────────────────────────► tifa-api (public): /v1/*, /mcp, /docs, /health
                                            served from memory, refreshed from Firestore every 30 s
 ```
 

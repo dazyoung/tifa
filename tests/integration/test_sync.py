@@ -122,7 +122,7 @@ def test_a_poll_is_not_lost_when_another_client_refreshed_the_read_model_first()
 
 def test_copies_kept_beside_other_clients_get_every_poll_once():
     """Three hours across UTC midnight on one API instance, every clock running as time passes. Other clients ask
-    for /v1/status every 20 s, /healthz every 45 s and /v1/coverage every 40 s, and two copies are kept in sync,
+    for /v1/status every 20 s, /health every 45 s and /v1/coverage every 40 s, and two copies are kept in sync,
     visiting /v1/changes every 61 and every 53 s. The read model refreshes on whichever request comes first, so it
     does so at ever different moments relative to the polls and the visits."""
     from tests.integration.conftest import RecordingStore, poll
@@ -133,7 +133,7 @@ def test_copies_kept_beside_other_clients_get_every_poll_once():
     end = b + 300  # the copies keep visiting for five minutes after the last poll
     events = [(x.at, 0, x) for x in attempts]
     events += [(t, 1, "/v1/status") for t in range(a + 11, end, 20)]
-    events += [(t, 2, "/healthz") for t in range(a + 7, end, 45)]
+    events += [(t, 2, "/health") for t in range(a + 7, end, 45)]
     events += [(t, 3, "/v1/coverage") for t in range(a + 23, end, 40)]
     events += [(t, 4, 0) for t in range(a + 30, end, 61)]
     events += [(t, 5, 1) for t in range(a + 2, end, 53)]

@@ -107,7 +107,7 @@ def test_status_is_tfls_answer_at_the_last_poll_with_the_open_episodes(world, ap
 
 
 def test_health(world, api):
-    r = api.get("/healthz")
+    r = api.get("/health")
     assert r.status_code == 200 and r.headers["cache-control"] == "no-store"
     data = r.json()["data"]
     assert data["status"] == "ok" and data["last_poll"] == iso(world.polls[-1])

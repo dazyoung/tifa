@@ -140,10 +140,10 @@
   },
   "openapi": "3.1.0",
   "paths": {
-    "/healthz": {
+    "/health": {
       "get": {
         "description": "The last poll and its age, the guard's heartbeat and the TfL key state. 503 when the last poll is\nmore than 10 minutes old.",
-        "operationId": "healthz_healthz_get",
+        "operationId": "health_health_get",
         "responses": {
           "200": {
             "content": {

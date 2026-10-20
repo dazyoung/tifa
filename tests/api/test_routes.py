@@ -155,7 +155,7 @@ ROUTES = {
     "/v1/stats?span=30d&end=2025-10-15": "public, max-age=3600",
     "/v1/coverage": "public, max-age=60",
     "/v1/meta": "public, max-age=3600",
-    "/healthz": "no-store",
+    "/health": "no-store",
 }
 
 
@@ -417,7 +417,7 @@ def test_root_docs_and_openapi(client):
         "/v1/months",
         "/v1/months/{month}",
     } <= paths
-    assert {"/v1/disruptions", "/v1/stats", "/v1/coverage", "/v1/meta", "/healthz"} <= paths
+    assert {"/v1/disruptions", "/v1/stats", "/v1/coverage", "/v1/meta", "/health"} <= paths
     assert (
         r.headers["etag"]
         and client.get("/openapi.json", headers={"If-None-Match": r.headers["etag"]}).status_code == 304
@@ -466,11 +466,11 @@ def test_head_has_the_headers_and_no_body(client):
 # ---- health and stale data --------------------------------------------------------------------------------------
 
 
-def test_healthz(shared_store):
+def test_health(shared_store):
     app, wall, mono = make_app(shared_store)
     shared_store.put_guard({"schema": 1, "mode": "enforce", "heartbeat": NOW - 90, "closed_until": None})
     with TestClient(app) as c:
-        data = c.get("/healthz").json()["data"]
+        data = c.get("/health").json()["data"]
         assert data["status"] == "ok" and data["last_poll_age_s"] == 0 and data["tfl_auth"] == "ok"
         assert data["guard"] == {
             "heartbeat": iso(NOW - 90),
@@ -480,15 +480,15 @@ def test_healthz(shared_store):
             "mode": "enforce",
         }
         wall.advance(601)
-        r = c.get("/healthz")
+        r = c.get("/health")
         assert r.status_code == 503 and r.headers["cache-control"] == "no-store"
         assert assert_envelope(r)["data"]["status"] == "stale"
 
 
-def test_healthz_before_any_poll():
+def test_health_before_any_poll():
     app, _, _ = make_app(MemoryStore())
     with TestClient(app) as c:
-        r = c.get("/healthz")
+        r = c.get("/health")
         assert r.status_code == 503 and r.json()["data"]["last_poll"] is None
         data = c.get("/v1/status").json()["data"]
         assert data == {"lines": [], "disrupted": 0, "total": 0, "open": [], "last_poll": None, "stale": True}
@@ -527,7 +527,7 @@ def test_store_errors_serve_the_last_good_data_marked_stale():
         assert r.status_code == 200 and r.json()["data"]["lines"] == before["data"]["lines"]
         assert r.json()["data"]["stale"] is True and r.json()["meta"]["stale"] is True
         assert r.headers["cache-control"] == "public, max-age=15"
-        health = c.get("/healthz").json()["data"]
+        health = c.get("/health").json()["data"]
         assert health["store"] == "error" and health["status"] == "ok"  # the last poll is still recent
         assert c.get("/v1/months/2025-10").status_code == 200
         # nothing cached for these days: the store is needed
@@ -536,7 +536,7 @@ def test_store_errors_serve_the_last_good_data_marked_stale():
         store.down = False
         mono.advance(31)
         r = c.get("/v1/status").json()
-        assert r["data"]["stale"] is False and c.get("/healthz").json()["data"]["store"] == "ok"
+        assert r["data"]["stale"] is False and c.get("/health").json()["data"]["store"] == "ok"
 
 
 def test_internal_errors_carry_the_envelope(monkeypatch):
@@ -584,7 +584,7 @@ def test_mcp_is_mounted_with_its_lifespan():
         assert "Mcp-Protocol-Version" in r.headers["access-control-allow-headers"]
         r = c.post("/mcp", content=b"x" * (65 * 1024), headers=MCP_HEADERS)
         assert r.status_code == 413 and assert_envelope(r, error=True)["error"]["code"] == "too_large"
-        assert c.get("/healthz").json()["data"]["mcp"] is True
+        assert c.get("/health").json()["data"]["mcp"] is True
 
 
 def test_mcp_lifespan_shapes():
@@ -621,3 +621,12 @@ def test_mcp_unavailable_without_a_server():
         assert r.status_code == 503 and assert_envelope(r, error=True)["error"]["code"] == "mcp_unavailable"
         r = c.put("/mcp", json=INIT)
         assert r.status_code == 405 and r.headers["allow"] == "POST, OPTIONS"
+
+
+def test_no_route_ends_in_z(shared_store):
+    """Cloud Run reserves some paths that end in "z" (such as /healthz) and answers them itself with a 404."""
+    from tifa.poller import app as poller_app
+
+    app, _, _ = make_app(shared_store)
+    paths = {getattr(route, "path", "") for route in [*app.routes, *poller_app.app.routes]}
+    assert "/health" in paths and not [p for p in paths if p.rstrip("/").endswith("z")]

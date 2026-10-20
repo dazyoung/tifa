@@ -98,7 +98,7 @@ route is reached have none). Send it back as `If-None-Match` and an unchanged re
 | `/v1/stats` | `public, max-age=3600` for a past date, `public, max-age=60` for `end=now` |
 | `/v1/coverage` | `public, max-age=60` |
 | `/v1/meta` | `public, max-age=3600` |
-| `/healthz`, errors | `no-store` |
+| `/health`, errors | `no-store` |
 
 While the store cannot be read, everything else is `public, max-age=15`.
 
@@ -364,11 +364,12 @@ before reading a quiet period as a good one.
 About the API: `name`, `api_version`, the published `sources`, the `categories` and `causes` with their labels, the
 `licence`, `attribution` and `notice`, the `fair_use` limits in force, and `links`.
 
-### `GET /healthz`
+### `GET /health`
 
 The last poll and its age, the TfL key state (`tfl_auth`: `ok`, `degraded` when TfL refused the key and requests
 went out anonymously, or `anonymous`), the store, the guard's heartbeat and whether it has the API closed, and
-whether MCP is running. **503** when the last poll is more than 10 minutes old.
+whether MCP is running. **503** when the last poll is more than 10 minutes old. (It isn't `/healthz`: Cloud Run
+reserves some paths that end in `z`.)
 
 ```json
 {"status": "ok", "last_poll": "2026-10-26T08:30:06+00:00", "last_poll_age_s": 34, "tfl_auth": "ok",

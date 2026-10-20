@@ -10,7 +10,7 @@ TIFA_FIRESTORE_DATABASE; the client honours FIRESTORE_EMULATOR_HOST). TIFA_STORE
 state lives only in Firestore. --store memory gives an empty store that keeps nothing, for trying the commands
 out; --force is refused with it, because the IAM change would be real while the state it records is thrown away.
 
-show prints guard/state and a summary. Its "closed" follows /healthz: a closure that has not ended and that has
+show prints guard/state and a summary. Its "closed" follows /health: a closure that has not ended and that has
 been applied (allUsers removed). A dry run's own closure, or one the guard failed to apply, is "decided" but not
 "closed".
 
@@ -130,7 +130,7 @@ def stored_mode(doc: Mapping[str, Any] | None) -> str | None:
 
 
 def summary(doc: dict[str, Any] | None, now: int) -> dict[str, Any]:
-    """What guard/state says: closed or not (as /healthz decides), until when and why, and the guard's mode."""
+    """What guard/state says: closed or not (as /health decides), until when and why, and the guard's mode."""
     if not doc:
         return {
             "closed": False,

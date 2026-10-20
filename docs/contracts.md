@@ -23,12 +23,12 @@ src/tifa/
     memory.py             in-memory Store (tests, local runs)
     firestore.py          Firestore Store (production)
   poller/
-    app.py                private ASGI app: POST /internal/poll, POST /internal/budget, GET /healthz
+    app.py                private ASGI app: POST /internal/poll, POST /internal/budget, GET /health
     tfl_client.py         httpx client for TfL (timeouts, gzip, app_key, redaction)
     poll.py               run_poll(store, client, slot, now_ts) -> PollResult
     guard.py              fair-use guard: Monitoring reads, decide(), close/open the public API (IAM), budget messages
   api/
-    app.py                public ASGI app: /v1/*, /healthz, /docs, /openapi.json, mounts MCP at /mcp
+    app.py                public ASGI app: /v1/*, /health, /docs, /openapi.json, mounts MCP at /mcp
     readmodel.py          in-memory read model refreshed from the Store (state every <=30 s, months on revision change)
     views.py              pure functions: read model + query -> response data (shared by REST and MCP)
     ratelimit.py          per-IP token buckets and global limits
@@ -128,7 +128,7 @@ Errors: `{"error": {"code", "message"}, "meta": {...}}` with 400/404/410/429/503
 | `/v1/stats?span&end[&line]` | `period_figures()` | 3600 for a past date, 60 for now |
 | `/v1/coverage?from&to` | watched spans per source, coverage %, gaps, polls per day, failed slots (at most 90 days) | 60 |
 | `/v1/meta` | sources, categories, causes, licence, fair-use limits | 3600 |
-| `/healthz` | last poll age, guard heartbeat, TfL auth state; 503 when the last poll is over 10 min old | no-store |
+| `/health` | last poll age, guard heartbeat, TfL auth state; 503 when the last poll is over 10 min old | no-store |
 
 All responses: gzip, strong ETag, `If-None-Match` → 304, `RateLimit-*` headers.
 
@@ -158,5 +158,5 @@ Code: MIT. Data: TfL open data, re-used under TfL's open data terms (based on th
 - `/v1/months` index: `{months, first, lines: [{id, name, mode, shared_with}], categories, causes: [{code, label}]}`. Stats use `gather(..., sources=public_sources)`.
 - Views (`api/views.py`), shared by REST and MCP: `status_view`, `changes_view`, `lines_view`, `line_view`, `months_index_view`, `month_view`, `disruptions_view`, `stats_view`, `coverage_view`, `meta_view`, `causes_view`, raising `ViewError(status, code, message)`. MCP is built by `api/mcp.py: build_mcp_app(rm, settings=...)` and charged through `ratelimit.charge(request, cost)`.
 - `/v1/coverage` and the MCP coverage tool clamp their window to the recorded history and now, so a request cannot force reads of days that were never polled. The read model caches a UTC day's polls as final only if the day was over when it was read.
-- Guard: dry-run decisions are recorded separately (`dry_run` fields; `trips[].dry_run`) and are never enforced by a later switch to enforce mode; dry-run and off still reopen a closure the guard applied. The poller `/healthz` reports `dry_run`.
+- Guard: dry-run decisions are recorded separately (`dry_run` fields; `trips[].dry_run`) and are never enforced by a later switch to enforce mode; dry-run and off still reopen a closure the guard applied. The poller `/health` reports `dry_run`.
 - Deployment identifiers (`GCP_PROJECT_ID`, `GCP_WIF_PROVIDER`, `GCP_DEPLOY_SA`) are repository secrets so they are masked in public logs; `TIFA_DEPLOY=true` (a variable) enables the deploy job.
