@@ -4,7 +4,7 @@ Tifa serves its data to AI assistants and agents through a remote [Model Context
 server, next to the REST API and from the same data. It is open: no key and no sign-in, under the same fair-use
 limits as the REST API.
 
-- **Endpoint:** `<base-url>/mcp`, where `<base-url>` is the API's address (the same one that serves `/v1/...`).
+- **Endpoint:** `https://tifa-api-dh52427ooa-ew.a.run.app/mcp` (the same address that serves `/v1/...`).
 - **Transport:** streamable HTTP, stateless, JSON responses. Every request is one `POST` with one JSON-RPC message
   and gets one JSON response, gzipped when the client sends `Accept-Encoding: gzip` (most clients do). There are
   no sessions and no event streams: `GET` and `DELETE` answer `405`.
@@ -18,7 +18,7 @@ answers built from Tifa, credit "Powered by TfL Open Data"; every tool result ca
 ### Claude Code
 
 ```sh
-claude mcp add --transport http tifa <base-url>/mcp
+claude mcp add --transport http tifa https://tifa-api-dh52427ooa-ew.a.run.app/mcp
 ```
 
 Add `--scope user` to have it in every project, or `--scope project` to share it through the project's `.mcp.json`.
@@ -27,7 +27,7 @@ last month?". `claude mcp list` shows whether it connected.
 
 ### Claude apps (desktop, web)
 
-Settings, Connectors, "Add custom connector": name it Tifa and give `<base-url>/mcp` as the URL. No authentication
+Settings, Connectors, "Add custom connector": name it Tifa and give `https://tifa-api-dh52427ooa-ew.a.run.app/mcp` as the URL. No authentication
 is needed.
 
 ### VS Code
@@ -37,7 +37,7 @@ In `.vscode/mcp.json` (or your user configuration):
 ```json
 {
   "servers": {
-    "tifa": { "type": "http", "url": "<base-url>/mcp" }
+    "tifa": { "type": "http", "url": "https://tifa-api-dh52427ooa-ew.a.run.app/mcp" }
   }
 }
 ```
@@ -49,17 +49,17 @@ Most clients take a server entry with a URL, for example in Cursor's `mcp.json`:
 ```json
 {
   "mcpServers": {
-    "tifa": { "url": "<base-url>/mcp" }
+    "tifa": { "url": "https://tifa-api-dh52427ooa-ew.a.run.app/mcp" }
   }
 }
 ```
 
 A client that only starts local (stdio) servers can reach it through a bridge such as
-`npx mcp-remote <base-url>/mcp`.
+`npx mcp-remote https://tifa-api-dh52427ooa-ew.a.run.app/mcp`.
 
 ### MCP Inspector
 
-`npx @modelcontextprotocol/inspector`, then choose the "Streamable HTTP" transport and enter `<base-url>/mcp`.
+`npx @modelcontextprotocol/inspector`, then choose the "Streamable HTTP" transport and enter `https://tifa-api-dh52427ooa-ew.a.run.app/mcp`.
 
 ### From code
 
@@ -73,7 +73,7 @@ from mcp.client.streamable_http import streamable_http_client
 
 
 async def main() -> None:
-    async with streamable_http_client("<base-url>/mcp") as (read, write, _):
+    async with streamable_http_client("https://tifa-api-dh52427ooa-ew.a.run.app/mcp") as (read, write, _):
         async with ClientSession(read, write) as session:
             await session.initialize()
             result = await session.call_tool("current_status", {"mode": "tube"})
@@ -86,7 +86,7 @@ asyncio.run(main())
 Or by hand: as the server is stateless, a tool call needs no `initialize` first.
 
 ```sh
-curl -s --compressed <base-url>/mcp \
+curl -s --compressed https://tifa-api-dh52427ooa-ew.a.run.app/mcp \
   -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"line_status","arguments":{"line":"victoria"}}}'
 ```

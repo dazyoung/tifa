@@ -4,10 +4,11 @@ Tifa's REST API is open: no key, no sign-up, no cookies. It is read-only (`GET` 
 origin, and it is shared fairly between everyone through the [limits below](#fair-use). The same data is available
 to AI assistants through the [MCP server](mcp.md).
 
-- **Base URL:** `<base-url>` (the service's address; see the README).
-- **Interactive docs:** `<base-url>/docs` (Swagger UI; your browser loads its script and stylesheet from the
-  jsDelivr CDN). The OpenAPI document is `<base-url>/openapi.json` (also in the repository as
-  [openapi.json](openapi.json), checked in CI).
+- **Base URL:** `https://tifa-api-dh52427ooa-ew.a.run.app`
+- **Interactive docs:** https://tifa-api-dh52427ooa-ew.a.run.app/docs (Swagger UI; your browser loads its script and stylesheet
+  from the jsDelivr CDN).
+- **OpenAPI document:** `https://tifa-api-dh52427ooa-ew.a.run.app/openapi.json`, also in the repository as [openapi.json](openapi.json),
+  checked in CI.
 - **Version:** every route is under `/v1`. Additions (new fields, new routes) can happen within `v1`; a change that
   breaks clients gets a new prefix. Clients should ignore fields they do not know.
 
@@ -386,8 +387,8 @@ The MCP server: streamable HTTP, stateless, JSON responses. See [mcp.md](mcp.md)
 ## Examples
 
 ```sh
-curl -s <base-url>/v1/status | jq '.data.lines[] | select(.good | not) | {name, status}'
-curl -s '<base-url>/v1/disruptions?line=central&from=2026-10-01&to=2026-10-31&planned=false' | jq '.data.total'
-curl -s '<base-url>/v1/stats?span=30d&end=now' | jq '.data | {good_pct, unplanned, most_disrupted}'
-curl -s -H 'If-None-Match: "<etag>"' -o /dev/null -w '%{http_code}\n' <base-url>/v1/months/2026-10
+curl -s https://tifa-api-dh52427ooa-ew.a.run.app/v1/status | jq '.data.lines[] | select(.good | not) | {name, status}'
+curl -s 'https://tifa-api-dh52427ooa-ew.a.run.app/v1/disruptions?line=central&from=2026-10-01&to=2026-10-31&planned=false' | jq '.data.total'
+curl -s 'https://tifa-api-dh52427ooa-ew.a.run.app/v1/stats?span=30d&end=now' | jq '.data | {good_pct, unplanned, most_disrupted}'
+curl -s -H 'If-None-Match: "<etag>"' -o /dev/null -w '%{http_code}\n' https://tifa-api-dh52427ooa-ew.a.run.app/v1/months/2026-10
 ```
