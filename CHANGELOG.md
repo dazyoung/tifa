@@ -85,6 +85,8 @@ The REST API is versioned separately (`/v1`); breaking API changes get a new pre
 
 ### Fixed
 
+- The guard runs every 2 minutes as intended, not every 3: polls land a few seconds into their minute, so a run is
+  now due 10 s before the full interval since the last one.
 - The README and the API and MCP docs give the live service's address instead of a placeholder.
 - The health route is `/health` on both services (was `/healthz`): Cloud Run reserves some paths that end in
   `z` and answers them itself with a 404, so the deployed API's health check never reached Tifa.
