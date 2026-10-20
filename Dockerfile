@@ -1,7 +1,7 @@
 # One image for both services; TIFA_ROLE (api | poller) picks the app at start-up.
 # Base images are pinned by digest (both stages use the same Python image); Dependabot proposes updates.
 
-FROM ghcr.io/astral-sh/uv:0.12.24@sha256:3af4716e991d6956a41e573eab705d0ee08500cd829ed30293eb8472f372c65a AS uv
+FROM ghcr.io/astral-sh/uv:0.13.3@sha256:bee0a2a458fd956c5df7b8b4c5fed2257b0af34866e3da7b51db0be3acb375d1 AS uv
 
 # ---- build: resolve the locked dependencies into /app/.venv, then install Tifa itself (not editable)
 FROM python:3.13.16-slim-trixie@sha256:70729b46c69b4f1e97c4822c1af3df53a1476cf5ddc6c087c0c10bc3a5678c2f AS build
