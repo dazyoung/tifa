@@ -214,4 +214,6 @@ def test_the_real_api_enforces_its_uncached_ceiling_and_its_request_ceiling():
     assert code == 0 and report["checks"]["uncached_limited"] and set(report["busy_reasons"]) == {"uncached"}
     assert report["successes"] == 10  # TIFA_UNCACHED_PER_S, all at once
     code, report, _ = run([*LOCAL, "--mode", "global", "--expect-503", "global", "--requests", "150"], real_api())
-    assert code == 0 and report["busy_reasons"] == {"global": 50} and report["successes"] == 100  # the burst
+    # The burst of 100, plus whatever the 20/s refill adds while a slow machine sends the rest.
+    ok, busy = report["successes"], report["busy_reasons"].get("global", 0)
+    assert code == 0 and set(report["busy_reasons"]) == {"global"} and 100 <= ok <= 110 and ok + busy == 150

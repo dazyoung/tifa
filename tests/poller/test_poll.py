@@ -224,7 +224,14 @@ def test_concurrent_attempts_of_one_slot_apply_once(store):
         t.start()
     for t in threads:
         t.join(timeout=10)
-    assert sorted(r.outcome for r in results) == ["applied"] + ["duplicate"] * 7
+    outcomes = sorted(r.outcome for r in results)
+    if isinstance(store, MemoryStore):
+        assert outcomes == ["applied"] + ["duplicate"] * 7
+    else:
+        # Under this much contention (8 at once; production has at most 2) Firestore may give up on a transaction.
+        # That attempt reports "failed" (Scheduler retries it); exactly one attempt may ever apply.
+        assert outcomes.count("applied") == 1 and set(outcomes) <= {"applied", "duplicate", "failed"}
+        assert run_poll(store, FakeTfl(payload(DELAYS)), SLOT, T0 + 30).outcome == "duplicate"
     assert store.get_polls("2026-10-19").n == 1
     assert len(store.get_state().open) == 1
 
