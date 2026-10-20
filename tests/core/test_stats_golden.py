@@ -57,8 +57,9 @@ def test_gather(key):
 def test_cover_of():
     _, data = period("7d", "now")
     members = stats.members_of(IDX)
-    assert {line["id"]: as_json(stats.cover_of(line, members, data["watched"])) for line in IDX["lines"]} \
-        == GOLDEN["cover_of"]
+    assert {line["id"]: as_json(stats.cover_of(line, members, data["watched"])) for line in IDX["lines"]} == GOLDEN[
+        "cover_of"
+    ]
 
 
 @pytest.mark.parametrize("key", sorted(GOLDEN["line_period"]))
@@ -73,8 +74,10 @@ def test_line_period(key):
             continue
         cover = stats.cover_of(line, members, data["watched"])
         eps = data["eps"].get(line["id"], [])
-        got = {"before": stats.line_period(eps, cover, p["p0"], p["t0"]),
-               "period": stats.line_period(eps, cover, p["t0"], p["t1"], extra)}
+        got = {
+            "before": stats.line_period(eps, cover, p["p0"], p["t0"]),
+            "period": stats.line_period(eps, cover, p["t0"], p["t1"], extra),
+        }
         assert as_json(got) == want["lines"][line["id"]], line["id"]
 
 
@@ -87,7 +90,7 @@ def test_period_figures(key):
         assert fx.digest(fig) == want["sha256"]
     else:
         assert as_json(fig) == want
-        assert fx.digest(fig) == fx.digest(want)   # the same types too: ints stay ints
+        assert fx.digest(fig) == fx.digest(want)  # the same types too: ints stay ints
 
 
 @pytest.mark.parametrize("key", sorted(GOLDEN["core_spans"]))
@@ -96,7 +99,7 @@ def test_core_spans(key):
     p = stats.period_of(span, fx.end_of(end), int(now), IDX["first"])
     core = stats.core_spans(p)
     assert fx.core_entry(core) == GOLDEN["core_spans"][key]
-    assert core == sorted(core) and all(a < b <= c for (a, b), (c, _) in itertools.pairwise(core))   # separate
+    assert core == sorted(core) and all(a < b <= c for (a, b), (c, _) in itertools.pairwise(core))  # separate
 
 
 @pytest.mark.parametrize("key", sorted(GOLDEN["period_figures_late"]))
@@ -124,7 +127,7 @@ def test_line_report(now):
             continue
         got = stats.line_report(line, snap, open_eps, now)
         for r in got["now"] + got["recent"]:
-            del r["cause"]   # Tifa adds it; the reference has none
+            del r["cause"]  # Tifa adds it; the reference has none
         entry = want[line["id"]]
         if "sha256" in entry:
             assert fx.digest(got) == entry["sha256"], line["id"]

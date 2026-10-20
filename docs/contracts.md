@@ -150,3 +150,13 @@ Official `mcp` SDK FastMCP, `stateless_http=True`, `json_response=True`, allowed
 ## Licences and attribution
 
 Code: MIT. Data: TfL open data, re-used under TfL's open data terms (based on the Open Government Licence v2.0); every response and the README carry "Powered by TfL Open Data" and "Not affiliated with or endorsed by Transport for London". No TfL logos or roundels.
+
+## Changes agreed during the build
+
+- `merge_month` dedupes on `(line, severity, planned, start, source)`; `split_months` takes an optional `now_ts` for open episodes; an observation's `reason` may be `None`; `CAUSES` is a tuple. Watched runs are merged with the run-segment helper, so a poll touches at most two months.
+- `validate_payload` is strict (non-empty `lineStatuses` of dicts with an integer `statusSeverity`; `modeName` a string; `disruption` a dict when present). The poller passes only line ids seen in the last 24 hours as `known_line_ids`.
+- `/v1/months` index: `{months, first, lines: [{id, name, mode, shared_with}], categories, causes: [{code, label}]}`. Stats use `gather(..., sources=public_sources)`.
+- Views (`api/views.py`), shared by REST and MCP: `status_view`, `changes_view`, `lines_view`, `line_view`, `months_index_view`, `month_view`, `disruptions_view`, `stats_view`, `coverage_view`, `meta_view`, `causes_view`, raising `ViewError(status, code, message)`. MCP is built by `api/mcp.py: build_mcp_app(rm, settings=...)` and charged through `ratelimit.charge(request, cost)`.
+- `/v1/coverage` and the MCP coverage tool clamp their window to the recorded history and now, so a request cannot force reads of days that were never polled. The read model caches a UTC day's polls as final only if the day was over when it was read.
+- Guard: dry-run decisions are recorded separately (`dry_run` fields; `trips[].dry_run`) and are never enforced by a later switch to enforce mode; dry-run and off still reopen a closure the guard applied. The poller `/healthz` reports `dry_run`.
+- Deployment identifiers (`GCP_PROJECT_ID`, `GCP_WIF_PROVIDER`, `GCP_DEPLOY_SA`) are repository secrets so they are masked in public logs; `TIFA_DEPLOY=true` (a variable) enables the deploy job.

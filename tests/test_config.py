@@ -33,6 +33,7 @@ def test_cloud_run_defaults():
     assert s.store == "firestore" and s.guard_mode == "enforce"
     assert s.log_json and s.proxy_headers
     assert s.port == 9000
+    assert s.public_sources == ("a",)  # TfL's FOI data is never published by default, on Cloud Run either
 
 
 def test_cloud_run_defaults_can_be_overridden():

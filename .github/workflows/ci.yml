@@ -38,8 +38,9 @@ jobs:
         run: uv sync --locked
       - name: Ruff
         run: uv run ruff check --output-format=github .
+      # -x follows `. infra/lib.sh`, so each script is checked together with the library it shares.
       - name: Shell scripts
-        run: shellcheck --version && shellcheck infra/*.sh
+        run: shellcheck --version && shellcheck -x infra/*.sh
       - name: Workflows
         run: >-
           docker run --rm -v "$PWD:/repo" -w /repo

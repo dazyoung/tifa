@@ -75,7 +75,8 @@ class Settings:
     api_service: str = DEFAULT_API_SERVICE  # TIFA_API_SERVICE: the public Cloud Run service the guard opens and closes
     tfl_app_key: str | None = field(default=None, repr=False)  # TFL_APP_KEY; None means anonymous requests
     tfl_base_url: str = TFL_BASE_URL  # TIFA_TFL_BASE_URL (tests point it at a fake)
-    public_sources: tuple[str, ...] = ("a",)  # TIFA_PUBLIC_SOURCES
+    # TIFA_PUBLIC_SOURCES: "f" only once TfL grants re-use of its FOI release, which it has not
+    public_sources: tuple[str, ...] = ("a",)
     allowed_hosts: tuple[str, ...] = ()  # TIFA_ALLOWED_HOSTS: Host values the MCP endpoint accepts
     store: str = "memory"  # TIFA_STORE
     firestore_database: str = DEFAULT_DATABASE  # TIFA_FIRESTORE_DATABASE

@@ -1,0 +1,1056 @@
+{
+  "components": {
+    "schemas": {
+      "Envelope": {
+        "properties": {
+          "data": {
+            "additionalProperties": true,
+            "title": "Data",
+            "type": "object"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "Envelope",
+        "type": "object"
+      },
+      "ErrorDetail": {
+        "properties": {
+          "code": {
+            "examples": [
+              "bad_request"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ErrorDetail",
+        "type": "object"
+      },
+      "ErrorEnvelope": {
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorDetail"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          }
+        },
+        "required": [
+          "error",
+          "meta"
+        ],
+        "title": "ErrorEnvelope",
+        "type": "object"
+      },
+      "Meta": {
+        "properties": {
+          "api_version": {
+            "examples": [
+              "1"
+            ],
+            "title": "Api Version",
+            "type": "string"
+          },
+          "attribution": {
+            "examples": [
+              "Powered by TfL Open Data"
+            ],
+            "title": "Attribution",
+            "type": "string"
+          },
+          "generated_at": {
+            "description": "When this body was generated (ISO 8601, UTC).",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "last_poll": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The latest poll when this body was generated.",
+            "title": "Last Poll"
+          },
+          "licence": {
+            "title": "Licence",
+            "type": "string"
+          },
+          "notice": {
+            "examples": [
+              "Not affiliated with or endorsed by Transport for London."
+            ],
+            "title": "Notice",
+            "type": "string"
+          },
+          "sources": {
+            "description": "The sources published: \"a\" is the live recording.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "stale": {
+            "description": "No poll for over 5 minutes, or the store could not be read.",
+            "title": "Stale",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "attribution",
+          "notice",
+          "licence",
+          "sources",
+          "generated_at",
+          "last_poll",
+          "stale",
+          "api_version"
+        ],
+        "title": "Meta",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "London TfL line-status disruptions, recorded every minute, as an open REST API and an MCP server.\n\n**Powered by TfL Open Data.** Not affiliated with or endorsed by Transport for London.\n\nData: Transport for London open data, re-used under TfL's open data terms (based on the Open Government Licence v2.0). Code: MIT.\n\nEvery JSON response is `{\"data\": ..., \"meta\": {...}}`; errors are `{\"error\": {\"code\", \"message\"}, \"meta\": ...}`.\nTimes are ISO 8601 in UTC, except month payloads (`/v1/months/{YYYY-MM}`, epoch seconds in their established\nrow format) and the cursor and poll times of `/v1/changes` (epoch seconds). Days and hours shown to people are\nLondon time.\n\nFair use: each client address has a bucket of 60 tokens refilled at one per second. A request costs 1, an\nuncached changes, disruptions, stats or coverage query 5, an MCP tool call 3. Each address may also receive\n1/8 of the service's hourly data allowance per hour (see `/v1/meta`): ask for gzip and send\n`If-None-Match`.\nOver a limit the API answers 429 with `Retry-After`; when the whole service is at its limit, 503 with\n`Retry-After` (60 seconds, or longer while the hourly data allowance recovers). Responses carry `ETag` (send\n`If-None-Match` for a 304), `Cache-Control` and `RateLimit-*` headers, and are gzipped when asked.\n\nThe MCP server (streamable HTTP, stateless, JSON responses) is at `/mcp`.",
+    "license": {
+      "name": "Code: MIT. Data: TfL open data (OGL v2.0 based terms)"
+    },
+    "summary": "London TfL line-status disruptions: an open REST API and MCP server.",
+    "title": "Tifa",
+    "version": "1"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/healthz": {
+      "get": {
+        "description": "The last poll and its age, the guard's heartbeat and the TfL key state. 503 when the last poll is\nmore than 10 minutes old.",
+        "operationId": "healthz_healthz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            },
+            "description": "The data, in the envelope"
+          },
+          "304": {
+            "description": "Not modified (If-None-Match matched the ETag)"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too many requests from this client (Retry-After)"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Service health",
+        "tags": [
+          "about"
+        ]
+      }
+    },
+    "/v1/changes": {
+      "get": {
+        "description": "For keeping a copy in sync: the status now, the open episodes, the episodes that closed at or after\n`since` (an episode closed at a gap ends at the poll before it, so repeats can come: merge on line,\nseverity, planned and start), the poll times after `since` and the next `cursor`. 410 when `since` is\nmore than 35 days ago: reload the months instead.",
+        "operationId": "changes_v1_changes_get",
+        "parameters": [
+          {
+            "description": "Epoch seconds: the `cursor` of the previous answer (at most 35 days ago).",
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Epoch seconds: the `cursor` of the previous answer (at most 35 days ago).",
+              "title": "Since"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            },
+            "description": "The data, in the envelope"
+          },
+          "304": {
+            "description": "Not modified (If-None-Match matched the ETag)"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The cursor is too old"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too many requests from this client (Retry-After)"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The service is at a limit, or the store cannot be read (Retry-After)"
+          }
+        },
+        "summary": "What changed since a cursor",
+        "tags": [
+          "live"
+        ]
+      }
+    },
+    "/v1/coverage": {
+      "get": {
+        "description": "The spans each published source watched in [from, to) (at most 90 days), the share watched, the gaps,\nand per UTC day the polls recorded and the slots that failed.",
+        "operationId": "coverage_v1_coverage_get",
+        "parameters": [
+          {
+            "description": "Epoch seconds, ISO 8601 or a London date (default: 7 days).",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Epoch seconds, ISO 8601 or a London date (default: 7 days).",
+              "title": "From"
+            }
+          },
+          {
+            "description": "Epoch seconds, ISO 8601 or a London date (default now).",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Epoch seconds, ISO 8601 or a London date (default now).",
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            },
+            "description": "The data, in the envelope"
+          },
+          "304": {
+            "description": "Not modified (If-None-Match matched the ETag)"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too many requests from this client (Retry-After)"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The service is at a limit, or the store cannot be read (Retry-After)"
+          }
+        },
+        "summary": "When the sources watched",
+        "tags": [
+          "history"
+        ]
+      }
+    },
+    "/v1/disruptions": {
+      "get": {
+        "description": "Episodes overlapping [from, to), oldest first: at most 366 days per request and 500 per page. Follow\n`next_cursor` for the next page.",
+        "operationId": "disruptions_v1_disruptions_get",
+        "parameters": [
+          {
+            "description": "Line ids, comma-separated.",
+            "in": "query",
+            "name": "line",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Line ids, comma-separated.",
+              "title": "Line"
+            }
+          },
+          {
+            "description": "Epoch seconds, ISO 8601 or a London date (default: 30 days before to).",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Epoch seconds, ISO 8601 or a London date (default: 30 days before to).",
+              "title": "From"
+            }
+          },
+          {
+            "description": "Epoch seconds, ISO 8601 or a London date, included (default: now).",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Epoch seconds, ISO 8601 or a London date, included (default: now).",
+              "title": "To"
+            }
+          },
+          {
+            "description": "delays, suspended, closure, other or info; comma-separated.",
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "delays, suspended, closure, other or info; comma-separated.",
+              "title": "Category"
+            }
+          },
+          {
+            "description": "Cause codes (see /v1/meta) or unknown; comma-separated.",
+            "in": "query",
+            "name": "cause",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Cause codes (see /v1/meta) or unknown; comma-separated.",
+              "title": "Cause"
+            }
+          },
+          {
+            "description": "true for planned works only, false for unplanned.",
+            "in": "query",
+            "name": "planned",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "true for planned works only, false for unplanned.",
+              "title": "Planned"
+            }
+          },
+          {
+            "description": "Published sources, comma-separated.",
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Published sources, comma-separated.",
+              "title": "Source"
+            }
+          },
+          {
+            "description": "Episodes per page, 1-500 (default 100).",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Episodes per page, 1-500 (default 100).",
+              "title": "Limit"
+            }
+          },
+          {
+            "description": "next_cursor from the previous page.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "next_cursor from the previous page.",
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            },
+            "description": "The data, in the envelope"
+          },
+          "304": {
+            "description": "Not modified (If-None-Match matched the ETag)"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too many requests from this client (Retry-After)"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The service is at a limit, or the store cannot be read (Retry-After)"
+          }
+        },
+        "summary": "Episodes, filtered and paged",
+        "tags": [
+          "history"
+        ]
+      }
+    },
+    "/v1/lines": {
+      "get": {
+        "description": "Every known line with its id, name and mode, the member lines of a shared line, and when the live\nrecording first and last saw it.",
+        "operationId": "lines_v1_lines_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            },
+            "description": "The data, in the envelope"
+          },
+          "304": {
+            "description": "Not modified (If-None-Match matched the ETag)"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too many requests from this client (Retry-After)"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The service is at a limit, or the store cannot be read (Retry-After)"
+          }
+        },
+        "summary": "The lines",
+        "tags": [
+          "lines"
+        ]
+      }
+    },
+    "/v1/lines/{line_id}": {
+      "get": {
+        "description": "What is open on the line now, its figures over the last 24 hours, 7, 30 and 90 days, its latest\nepisodes with reasons and causes, and how many unplanned disruptions started in each London hour.",
+        "operationId": "line_v1_lines__line_id__get",
+        "parameters": [
+          {
+            "description": "A line id from /v1/lines, such as central.",
+            "in": "path",
+            "name": "line_id",
+            "required": true,
+            "schema": {
+              "description": "A line id from /v1/lines, such as central.",
+              "title": "Line Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            },
+            "description": "The data, in the envelope"
+          },
+          "304": {
+            "description": "Not modified (If-None-Match matched the ETag)"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too many requests from this client (Retry-After)"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The service is at a limit, or the store cannot be read (Retry-After)"
+          }
+        },
+        "summary": "One line's report",
+        "tags": [
+          "lines"
+        ]
+      }
+    },
+    "/v1/meta": {
+      "get": {
+        "description": "The sources published, the categories and causes, the licence and attribution, and the fair-use\nlimits.",
+        "operationId": "meta_route_v1_meta_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            },
+            "description": "The data, in the envelope"
+          },
+          "304": {
+            "description": "Not modified (If-None-Match matched the ETag)"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too many requests from this client (Retry-After)"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The service is at a limit, or the store cannot be read (Retry-After)"
+          }
+        },
+        "summary": "About this API",
+        "tags": [
+          "about"
+        ]
+      }
+    },
+    "/v1/months": {
+      "get": {
+        "description": "The months with published data, the start of the history, the lines (with `shared_with`), the\ncategories and the causes.",
+        "operationId": "months_v1_months_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            },
+            "description": "The data, in the envelope"
+          },
+          "304": {
+            "description": "Not modified (If-None-Match matched the ETag)"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too many requests from this client (Retry-After)"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The service is at a limit, or the store cannot be read (Retry-After)"
+          }
+        },
+        "summary": "The months index",
+        "tags": [
+          "history"
+        ]
+      }
+    },
+    "/v1/months/{month}": {
+      "get": {
+        "description": "Every episode overlapping the UTC month as rows `[line, start, end, severity, category, planned01,\nsource, cause, status, reason, end_estimated01]` (epoch seconds; `end` null while open), and the spans\neach source watched. The first 8 fields are the established month format.",
+        "operationId": "month_v1_months__month__get",
+        "parameters": [
+          {
+            "description": "A UTC month, YYYY-MM.",
+            "in": "path",
+            "name": "month",
+            "required": true,
+            "schema": {
+              "description": "A UTC month, YYYY-MM.",
+              "examples": [
+                "2025-11"
+              ],
+              "title": "Month",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            },
+            "description": "The data, in the envelope"
+          },
+          "304": {
+            "description": "Not modified (If-None-Match matched the ETag)"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too many requests from this client (Retry-After)"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The service is at a limit, or the store cannot be read (Retry-After)"
+          }
+        },
+        "summary": "One month's episodes",
+        "tags": [
+          "history"
+        ]
+      }
+    },
+    "/v1/stats": {
+      "get": {
+        "description": "Good service, unplanned and planned disruptions, line-time disrupted, the most disrupted line, the\nlongest unplanned disruption, the busiest day, the top causes, chart bins and one row per line, against\nthe period before when both were watched enough. Shares are 0-1, times epoch seconds.",
+        "operationId": "stats_v1_stats_get",
+        "parameters": [
+          {
+            "description": "1d, 7d, 30d, 90d or 365d (default 7d).",
+            "in": "query",
+            "name": "span",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "1d, 7d, 30d, 90d or 365d (default 7d).",
+              "title": "Span"
+            }
+          },
+          {
+            "description": "now, or a London date YYYY-MM-DD (default now).",
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "now, or a London date YYYY-MM-DD (default now).",
+              "title": "End"
+            }
+          },
+          {
+            "description": "One line id, for that line's figures only.",
+            "in": "query",
+            "name": "line",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "One line id, for that line's figures only.",
+              "title": "Line"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            },
+            "description": "The data, in the envelope"
+          },
+          "304": {
+            "description": "Not modified (If-None-Match matched the ETag)"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too many requests from this client (Retry-After)"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The service is at a limit, or the store cannot be read (Retry-After)"
+          }
+        },
+        "summary": "Figures for a period",
+        "tags": [
+          "history"
+        ]
+      }
+    },
+    "/v1/status": {
+      "get": {
+        "description": "TfL's status of every line at the last poll (live problems first, then planned works, then good\nservice), the episodes open now, the last poll time and `stale` (no poll for over 5 minutes).",
+        "operationId": "status_v1_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope"
+                }
+              }
+            },
+            "description": "The data, in the envelope"
+          },
+          "304": {
+            "description": "Not modified (If-None-Match matched the ETag)"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too many requests from this client (Retry-After)"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The service is at a limit, or the store cannot be read (Retry-After)"
+          }
+        },
+        "summary": "Every line's status now",
+        "tags": [
+          "live"
+        ]
+      }
+    }
+  }
+}

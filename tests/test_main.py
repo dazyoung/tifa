@@ -1,12 +1,15 @@
+import importlib.util
 import json
 import logging
+import os
+import subprocess
 import sys
 import types
 
 import pytest
 
 from tifa import main as entry
-from tifa.config import Settings, get_settings
+from tifa.config import ROLES, Settings, get_settings
 
 KEY = "abcd" * 8  # the length of a TfL key, not a real one
 QUIETED = ("httpx", "httpcore", "hpack", "urllib3", "google.auth", "grpc")
@@ -208,3 +211,41 @@ def test_main_serves_with_uvicorn(fake_apps, monkeypatch):
     assert isinstance(calls["app"], entry.ProxyHeaders)
     assert calls["port"] == 8123 and calls["host"] == "0.0.0.0"
     assert calls["proxy_headers"] is False and calls["lifespan"] == "on" and calls["log_config"] is None
+
+
+def test_apps_follow_the_contract():
+    assert entry.APPS == {"api": "tifa.api.app:app", "poller": "tifa.poller.app:app"}
+    assert set(entry.APPS) == set(ROLES)
+
+
+def _clean_env():
+    """The environment without Tifa or Cloud Run settings: what a local run or the CI image check sees."""
+    prefixes = ("TIFA_", "K_", "GOOGLE_", "GCLOUD_", "CLOUDSDK_", "FIRESTORE_", "TFL_")
+    return {k: v for k, v in os.environ.items() if not k.startswith(prefixes) and k != "PORT"}
+
+
+def test_importing_the_entry_point_loads_neither_app():
+    """One role must never pay for (or break on) the other's imports: both apps load only through load_app()."""
+    heavy = ("fastapi", "starlette", "mcp", "uvicorn", "httpx", "google", "tifa.api", "tifa.poller", "tifa.store")
+    code = "import sys, tifa.main; print('\\n'.join(sys.modules))"
+    proc = subprocess.run([sys.executable, "-c", code], env=_clean_env(), capture_output=True, text=True, timeout=60)
+    assert proc.returncode == 0, proc.stderr
+    loaded = [m for m in proc.stdout.split() if any(m == h or m.startswith(h + ".") for h in heavy)]
+    assert loaded == []
+
+
+@pytest.mark.parametrize("role", ROLES)
+def test_each_real_app_loads_with_local_defaults(role):
+    """`python -m tifa.main ROLE --check`, as the CI image job runs it: memory store, no cloud settings."""
+    module = entry.APPS[role].partition(":")[0]
+    if importlib.util.find_spec(module) is None:
+        pytest.skip(f"{module} is not written yet")
+    proc = subprocess.run(
+        [sys.executable, "-m", "tifa.main", role, "--check"],
+        env=_clean_env(),
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert f"tifa: {role} app ok (store=memory, tfl_auth=anonymous)" in proc.stdout

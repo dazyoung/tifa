@@ -1,8 +1,13 @@
 name: Deploy
 
-# Every push to main runs CI, then builds one image and deploys it as both Cloud Run services.
-# Authentication is keyless (Workload Identity Federation). All identifiers come from repository variables;
-# none are committed. See docs/operations.md for the variables and the one-time setup.
+# Every push to main runs CI, then builds one image and deploys it to the two existing Cloud Run services.
+# The project may host other services, so the deploy identity is scoped to Tifa: it may update tifa-api and
+# tifa-poller (roles/run.developer on each service), push to the tifa-images repository and run the services as their
+# own accounts, and nothing else. It cannot create a service or change who may call one: infra/first-deploy.sh
+# creates the services once with an operator's credentials, and infra/post-deploy.sh owns their IAM.
+# Authentication is keyless (Workload Identity Federation). The project ID, provider and deploy account come from
+# repository SECRETS, so they are masked in this public repository's logs; none are committed. Other settings are
+# repository variables. Service names and settings come from infra/lib.sh, which infra/first-deploy.sh uses too.
 on:
   push:
     branches: [main]
@@ -13,6 +18,10 @@ permissions: {}
 concurrency:
   group: deploy-production
   cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
   ci:
@@ -26,8 +35,8 @@ jobs:
   deploy:
     name: Deploy to Cloud Run
     needs: ci
-    # Forks and copies without the variables skip deployment instead of failing.
-    if: github.ref == 'refs/heads/main' && vars.GCP_PROJECT_ID != ''
+    # Forks and copies without TIFA_DEPLOY=true skip deployment instead of failing.
+    if: github.ref == 'refs/heads/main' && vars.TIFA_DEPLOY == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment: production
@@ -35,39 +44,31 @@ jobs:
       contents: read
       id-token: write # for the Workload Identity Federation token exchange
     env:
-      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-      REGION: ${{ vars.GCP_REGION }}
-      WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
-      DEPLOY_SA: ${{ vars.GCP_DEPLOY_SA }}
-      API_SA: ${{ vars.TIFA_API_SA }}
-      POLLER_SA: ${{ vars.TIFA_POLLER_SA }}
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      GCP_REGION: ${{ vars.GCP_REGION }}
+      GCP_WIF_PROVIDER: ${{ secrets.GCP_WIF_PROVIDER }}
+      GCP_DEPLOY_SA: ${{ secrets.GCP_DEPLOY_SA }}
       TFL_APP_KEY_VERSION: ${{ vars.TFL_APP_KEY_VERSION }} # empty until a key exists: the poller runs anonymously
-      PUBLIC_SOURCES: ${{ vars.TIFA_PUBLIC_SOURCES || 'a' }}
-      EXTRA_HOSTS: ${{ vars.TIFA_ALLOWED_HOSTS }} # custom domains for MCP, comma-separated
-      POLLER_INGRESS: ${{ vars.TIFA_POLLER_INGRESS || 'all' }}
-      AR_REPOSITORY: tifa
-      API_SERVICE: tifa-api
-      POLLER_SERVICE: tifa-poller
-      SECRET_NAME: tfl-app-key
+      TIFA_PUBLIC_SOURCES: ${{ vars.TIFA_PUBLIC_SOURCES || 'a' }} # "f" (TfL's FOI release) needs TfL's re-use permission
+      TIFA_ALLOWED_HOSTS: ${{ vars.TIFA_ALLOWED_HOSTS }} # custom domains for MCP, comma-separated
+      TIFA_POLLER_INGRESS: ${{ vars.TIFA_POLLER_INGRESS || 'all' }}
     steps:
-      - name: Check the repository variables
+      - name: Check the repository secrets and variables
         run: |
           fail() { echo "::error::$1"; failed=1; }
           failed=0
-          [[ $PROJECT_ID =~ ^[a-z][a-z0-9-]{4,28}[a-z0-9]$ ]] || fail "GCP_PROJECT_ID is missing or not a project ID"
-          [[ $REGION =~ ^[a-z]+-[a-z]+[0-9]+$ ]] || fail "GCP_REGION is missing or not a region"
-          [[ $WIF_PROVIDER =~ ^projects/[0-9]+/locations/global/workloadIdentityPools/[a-z0-9-]+/providers/[a-z0-9-]+$ ]] \
-            || fail "GCP_WIF_PROVIDER is missing or not a provider resource name"
-          for name in DEPLOY_SA API_SA POLLER_SA; do
-            [[ ${!name} =~ ^[a-z][a-z0-9-]{4,28}[a-z0-9]@[a-z0-9-]+\.iam\.gserviceaccount\.com$ ]] \
-              || fail "the $name variable is missing or not a service account email"
-          done
-          [[ -z $TFL_APP_KEY_VERSION || $TFL_APP_KEY_VERSION =~ ^[0-9]+$ ]] \
+          [[ $GCP_PROJECT_ID =~ ^[a-z][a-z0-9-]{4,28}[a-z0-9]$ ]] || fail "GCP_PROJECT_ID is missing or not a project ID"
+          [[ $GCP_REGION =~ ^[a-z]+-[a-z]+[0-9]+$ ]] || fail "GCP_REGION is missing or not a region"
+          [[ $GCP_WIF_PROVIDER =~ ^projects/[0-9]+/locations/global/workloadIdentityPools/tifa-github/providers/[a-z0-9-]+$ ]] \
+            || fail "GCP_WIF_PROVIDER is missing or not a provider of the tifa-github pool"
+          [[ $GCP_DEPLOY_SA =~ ^tifa-deploy@[a-z][a-z0-9-]{4,28}[a-z0-9]\.iam\.gserviceaccount\.com$ ]] \
+            || fail "GCP_DEPLOY_SA is missing or not the tifa-deploy service account's email"
+          [[ -z $TFL_APP_KEY_VERSION || $TFL_APP_KEY_VERSION =~ ^[1-9][0-9]*$ ]] \
             || fail "TFL_APP_KEY_VERSION must be a secret version number (not 'latest')"
-          [[ $PUBLIC_SOURCES =~ ^[af](,[af])?$ ]] || fail "TIFA_PUBLIC_SOURCES must be a or a,f"
-          [[ -z $EXTRA_HOSTS || $EXTRA_HOSTS =~ ^[a-z0-9.:*-]+(,[a-z0-9.:*-]+)*$ ]] \
+          [[ $TIFA_PUBLIC_SOURCES =~ ^[af](,[af])?$ ]] || fail "TIFA_PUBLIC_SOURCES must be a or a,f"
+          [[ -z $TIFA_ALLOWED_HOSTS || $TIFA_ALLOWED_HOSTS =~ ^[a-z0-9.:*-]+(,[a-z0-9.:*-]+)*$ ]] \
             || fail "TIFA_ALLOWED_HOSTS must be comma-separated host names"
-          [[ $POLLER_INGRESS =~ ^(all|internal)$ ]] || fail "TIFA_POLLER_INGRESS must be all or internal"
+          [[ $TIFA_POLLER_INGRESS =~ ^(all|internal)$ ]] || fail "TIFA_POLLER_INGRESS must be all or internal"
           exit "$failed"
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -77,16 +78,25 @@ jobs:
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
-          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
-          service_account: ${{ vars.GCP_DEPLOY_SA }}
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SA }}
 
       - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
         with:
           version: "588.0.0"
-          project_id: ${{ vars.GCP_PROJECT_ID }}
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      # Before the build: CI only updates the services, so stop early, with instructions, if they are not there.
+      - name: Find the services
+        id: target
+        run: |
+          . infra/lib.sh
+          tifa_check_deploy_settings
+          tifa_require_services
+          echo "image=$(tifa_image_repo)" >> "$GITHUB_OUTPUT"
 
       - name: Let Docker push to Artifact Registry
-        run: gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+        run: gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
@@ -99,80 +109,31 @@ jobs:
           push: true
           provenance: false
           sbom: false
-          tags: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.AR_REPOSITORY }}/tifa:${{ github.sha }}
+          tags: ${{ steps.target.outputs.image }}:${{ github.sha }}
           labels: org.opencontainers.image.revision=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Deploy the poller (private)
         env:
-          DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE: ${{ steps.target.outputs.image }}@${{ steps.build.outputs.digest }}
         run: |
-          image="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPOSITORY}/tifa@${DIGEST}"
-          jq -n --arg project "$PROJECT_ID" --arg region "$REGION" --arg api "$API_SERVICE" '{
-            TIFA_ROLE: "poller", TIFA_STORE: "firestore", GOOGLE_CLOUD_PROJECT: $project, TIFA_REGION: $region,
-            TIFA_API_SERVICE: $api, TIFA_GUARD_MODE: "enforce"
-          }' > "$RUNNER_TEMP/poller-env.yaml"
-          if [[ -n $TFL_APP_KEY_VERSION ]]; then
-            secrets=(--set-secrets="TFL_APP_KEY=${SECRET_NAME}:${TFL_APP_KEY_VERSION}")
-          else
-            echo "::warning::TFL_APP_KEY_VERSION is not set: the poller calls TfL anonymously."
-            secrets=(--clear-secrets)
-          fi
-          gcloud run deploy "$POLLER_SERVICE" \
-            --image="$image" --region="$REGION" --service-account="$POLLER_SA" \
-            --execution-environment=gen1 --cpu=0.25 --memory=256Mi --concurrency=1 \
-            --min-instances=0 --max-instances=2 --timeout=60s --cpu-throttling --no-cpu-boost \
-            --ingress="$POLLER_INGRESS" --port=8080 \
-            --env-vars-file="$RUNNER_TEMP/poller-env.yaml" "${secrets[@]}" \
-            --labels=app=tifa,role=poller --quiet
-          # A manual rollback pins traffic to one revision; a new deploy from main takes it back.
-          gcloud run services update-traffic "$POLLER_SERVICE" --region="$REGION" --to-latest --quiet
+          . infra/lib.sh
+          tifa_check_deploy_settings
+          tifa_deploy_poller "$IMAGE"
 
       - name: Deploy the API (public)
         env:
-          DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE: ${{ steps.target.outputs.image }}@${{ steps.build.outputs.digest }}
         run: |
-          image="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPOSITORY}/tifa@${DIGEST}"
-          # Host names MCP accepts: the service's own run.app URLs plus any custom domains.
-          api_hosts() {
-            local json
-            json=$(gcloud run services describe "$API_SERVICE" --region="$REGION" --format=json 2>/dev/null) || return 0
-            jq -r '[(.metadata.annotations["run.googleapis.com/urls"] // "[]" | fromjson | .[]), .status.url]
-                   | map(select(. != null) | sub("^https://"; "")) | .[]' <<<"$json"
-          }
-          hosts() {
-            { api_hosts; tr ',' '\n' <<<"$EXTRA_HOSTS"; } | sed '/^$/d' | sort -u | paste -sd, -
-          }
-          write_env() {
-            jq -n --arg project "$PROJECT_ID" --arg region "$REGION" --arg sources "$PUBLIC_SOURCES" \
-                  --arg hosts "$1" '{
-              TIFA_ROLE: "api", TIFA_STORE: "firestore", GOOGLE_CLOUD_PROJECT: $project, TIFA_REGION: $region,
-              TIFA_PUBLIC_SOURCES: $sources, TIFA_ALLOWED_HOSTS: $hosts
-            }' > "$RUNNER_TEMP/api-env.yaml"
-          }
-          before=$(hosts)
-          write_env "$before"
-          # No --[no-]allow-unauthenticated: deploys never change who may call the API (post-deploy.sh and the
-          # fair-use guard own that binding).
-          gcloud run deploy "$API_SERVICE" \
-            --image="$image" --region="$REGION" --service-account="$API_SA" \
-            --execution-environment=gen1 --cpu=1 --memory=512Mi --concurrency=40 \
-            --min-instances=0 --max-instances=1 --timeout=30s --cpu-throttling --cpu-boost \
-            --ingress=all --port=8080 \
-            --env-vars-file="$RUNNER_TEMP/api-env.yaml" \
-            --labels=app=tifa,role=api --quiet
-          after=$(hosts)
-          if [[ $after != "$before" ]]; then  # first deploy: the URLs exist only now
-            write_env "$after"
-            gcloud run services update "$API_SERVICE" --region="$REGION" \
-              --env-vars-file="$RUNNER_TEMP/api-env.yaml" --quiet
-          fi
-          gcloud run services update-traffic "$API_SERVICE" --region="$REGION" --to-latest --quiet
+          . infra/lib.sh
+          tifa_check_deploy_settings
+          tifa_deploy_api "$IMAGE"
 
       - name: Smoke test
         run: |
-          url=$(gcloud run services describe "$API_SERVICE" --region="$REGION" --format='value(status.url)')
+          . infra/lib.sh
+          url=$(gcloud run services describe "$API_SERVICE" --region="$GCP_REGION" --format='value(status.url)')
           code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$url/healthz" || true)
           case "$code" in
             200) echo "API /healthz: 200" ;;
@@ -185,13 +146,14 @@ jobs:
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
         run: |
+          . infra/lib.sh
           {
             echo "### Deployed ${GITHUB_SHA::12}"
             echo
             echo "| Service | Revision |"
             echo "| --- | --- |"
             for svc in "$POLLER_SERVICE" "$API_SERVICE"; do
-              rev=$(gcloud run services describe "$svc" --region="$REGION" --format='value(status.latestReadyRevisionName)')
+              rev=$(gcloud run services describe "$svc" --region="$GCP_REGION" --format='value(status.latestReadyRevisionName)')
               echo "| $svc | $rev |"
             done
             echo

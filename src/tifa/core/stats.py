@@ -30,16 +30,16 @@ from .tfl import CATEGORY_IDS, SEVERITY_NAMES, rank
 from .timeutil import DAY, LONDON, UTC, epoch, iso, london_midnight, month_bounds, month_keys
 from .timeutil import midnights as _midnights
 
-CATS = CATEGORY_IDS                       # delays, suspended, closure, other, info: the display order
+CATS = CATEGORY_IDS  # delays, suspended, closure, other, info: the display order
 COUNTED = tuple(c for c in CATS if c != "info")
-STACK = tuple((c, pl) for c in COUNTED for pl in (False, True))   # chart layers, bottom up
+STACK = tuple((c, pl) for c in COUNTED for pl in (False, True))  # chart layers, bottom up
 SOURCES = (SOURCE_FOI, SOURCE_LIVE)
 
 # ---------- one line, live: the last 24 hours to 90 days ----------
 
 WINDOWS = (("24h", DAY), ("7d", 7 * DAY), ("30d", 30 * DAY), ("90d", 90 * DAY))
-SPAN = WINDOWS[-1][1]    # the longest window
-RECENT = 25              # latest episodes per line, with reasons
+SPAN = WINDOWS[-1][1]  # the longest window
+RECENT = 25  # latest episodes per line, with reasons
 
 
 def minutes(seconds: float) -> int:
@@ -93,9 +93,16 @@ def window_stats(episodes: Iterable, start: int, now_ts: int, covered_s: float) 
         "minutes_disrupted": minutes(disrupted),
         "disrupted_pct": round(min(100.0, 100 * disrupted / covered_s), 1) if covered_s else None,
         "longest_min": minutes(longest),
-        "by_category": {cid: {"episodes": cats[cid]["episodes"], "minutes": minutes(union_seconds(cats[cid]["spans"])),
-                              "longest_min": minutes(cats[cid]["longest"]), "by_status": cats[cid]["by_status"]}
-                        for cid in CATS if cid in cats},
+        "by_category": {
+            cid: {
+                "episodes": cats[cid]["episodes"],
+                "minutes": minutes(union_seconds(cats[cid]["spans"])),
+                "longest_min": minutes(cats[cid]["longest"]),
+                "by_status": cats[cid]["by_status"],
+            }
+            for cid in CATS
+            if cid in cats
+        },
     }
 
 
@@ -118,12 +125,29 @@ def _start(value) -> int | None:
 def _closed_row(r, lid: str, source: str) -> tuple | None:
     """A month row of this line and source with an end, as (start, end, severity, status, category, planned,
     reason, cause, end_estimated); None for anything else (open, another line or source, or not well formed)."""
-    if (not isinstance(r, list) or len(r) < 8 or r[0] != lid or r[6] != source or not _isint(r[1])
-            or not _isint(r[2]) or r[2] < r[1] or not _isint(r[3])):
+    if (
+        not isinstance(r, list)
+        or len(r) < 8
+        or r[0] != lid
+        or r[6] != source
+        or not _isint(r[1])
+        or not _isint(r[2])
+        or r[2] < r[1]
+        or not _isint(r[3])
+    ):
         return None
     reason = r[9] if len(r) > 9 and isinstance(r[9], str) else None
-    return (r[1], r[2], r[3], _status(r[8] if len(r) > 8 else None, r[3]), cat_of(r[4]), bool(r[5]), reason,
-            r[7] if isinstance(r[7], str) else None, bool(r[10]) if len(r) > 10 else False)
+    return (
+        r[1],
+        r[2],
+        r[3],
+        _status(r[8] if len(r) > 8 else None, r[3]),
+        cat_of(r[4]),
+        bool(r[5]),
+        reason,
+        r[7] if isinstance(r[7], str) else None,
+        bool(r[10]) if len(r) > 10 else False,
+    )
 
 
 def _open_episode(e, lid: str) -> dict | None:
@@ -136,18 +160,29 @@ def _open_episode(e, lid: str) -> dict | None:
     sev, planned = e["severity"], bool(e.get("planned"))
     status = _status(e.get("status"), sev)
     reason = e.get("reason") if isinstance(e.get("reason"), str) else None
-    return {"severity": sev, "status": status, "category": cat_of(e.get("category")), "planned": planned,
-            "start": start, "reason": reason, "cause": cause_of(reason, planned, status)}
+    return {
+        "severity": sev,
+        "status": status,
+        "category": cat_of(e.get("category")),
+        "planned": planned,
+        "start": start,
+        "reason": reason,
+        "cause": cause_of(reason, planned, status),
+    }
 
 
 def _spans(value) -> list:
     """Watched spans [[s, e], ...], checked."""
-    return [(s[0], s[1]) for s in _list(value)
-            if isinstance(s, list) and len(s) >= 2 and _isint(s[0]) and _isint(s[1]) and s[1] >= s[0]]
+    return [
+        (s[0], s[1])
+        for s in _list(value)
+        if isinstance(s, list) and len(s) >= 2 and _isint(s[0]) and _isint(s[1]) and s[1] >= s[0]
+    ]
 
 
-def line_report(line: Mapping, months: Mapping[str, Mapping], open_eps: Iterable[Mapping], now_ts: int,
-                source: str = SOURCE_LIVE) -> dict:
+def line_report(
+    line: Mapping, months: Mapping[str, Mapping], open_eps: Iterable[Mapping], now_ts: int, source: str = SOURCE_LIVE
+) -> dict:
     """One line's entry: what is open now (worst first), window_stats over the last 24 hours, 7, 30 and 90 days
     with the share of each window that `source` watched, the RECENT latest episodes with their reasons and causes
     (newest first) and how many unplanned disruptions started in each London hour over the last 90 days.
@@ -166,7 +201,7 @@ def line_report(line: Mapping, months: Mapping[str, Mapping], open_eps: Iterable
             continue
     keys.sort(reverse=True)
     closed, covered = {}, []
-    for (_, m1), k in keys:   # newest first, until the windows are covered and the latest episodes are all in
+    for (_, m1), k in keys:  # newest first, until the windows are covered and the latest episodes are all in
         if m1 <= now_ts - SPAN and sum(1 for r in closed.values() if r[0] >= m1) >= RECENT:
             break
         payload = _dict(months[k])
@@ -181,8 +216,10 @@ def line_report(line: Mapping, months: Mapping[str, Mapping], open_eps: Iterable
     covered = merged(covered, 0)
     # in the order they closed, as a recorder appends them
     past = sorted(closed.values(), key=lambda r: (r[1], r[0], r[2]))
-    now_eps = sorted((e for e in (_open_episode(x, lid) for x in open_eps) if e is not None),
-                     key=lambda e: (rank(e["severity"]), e["severity"], e["planned"]))
+    now_eps = sorted(
+        (e for e in (_open_episode(x, lid) for x in open_eps) if e is not None),
+        key=lambda e: (rank(e["severity"]), e["severity"], e["planned"]),
+    )
     eps = [(sev, status, cat, planned, s, e) for s, e, sev, status, cat, planned, *_ in past]
     eps += [(e["severity"], e["status"], e["category"], e["planned"], e["start"], None) for e in now_eps]
 
@@ -192,10 +229,14 @@ def line_report(line: Mapping, months: Mapping[str, Mapping], open_eps: Iterable
         stats[name] = window_stats(eps, now_ts - length, now_ts, cov)
         coverage[name] = round(100 * cov / length, 1)
 
-    recent = [(s, e, est, sev, status, cat, planned, reason, code)
-              for s, e, sev, status, cat, planned, reason, code, est in past]
-    recent += [(e["start"], None, False, e["severity"], e["status"], e["category"], e["planned"], e["reason"],
-                e["cause"]) for e in now_eps]
+    recent = [
+        (s, e, est, sev, status, cat, planned, reason, code)
+        for s, e, sev, status, cat, planned, reason, code, est in past
+    ]
+    recent += [
+        (e["start"], None, False, e["severity"], e["status"], e["category"], e["planned"], e["reason"], e["cause"])
+        for e in now_eps
+    ]
     recent.sort(key=lambda r: (r[0], now_ts if r[1] is None else r[1]), reverse=True)
 
     hours = [0] * 24
@@ -204,21 +245,45 @@ def line_report(line: Mapping, months: Mapping[str, Mapping], open_eps: Iterable
             hours[dt.datetime.fromtimestamp(s, LONDON).hour] += 1
 
     return {
-        "id": lid, "name": line.get("name") or lid, "mode": line.get("mode"),
-        "now": [{"severity": e["severity"], "status": e["status"], "category": e["category"], "planned": e["planned"],
-                 "start": iso(e["start"]), "minutes": minutes(now_ts - e["start"]), "reason": e["reason"],
-                 "cause": e["cause"]} for e in now_eps],
+        "id": lid,
+        "name": line.get("name") or lid,
+        "mode": line.get("mode"),
+        "now": [
+            {
+                "severity": e["severity"],
+                "status": e["status"],
+                "category": e["category"],
+                "planned": e["planned"],
+                "start": iso(e["start"]),
+                "minutes": minutes(now_ts - e["start"]),
+                "reason": e["reason"],
+                "cause": e["cause"],
+            }
+            for e in now_eps
+        ],
         "stats": stats,
         "coverage_pct": coverage,
-        "recent": [{"start": iso(s), "end": None if e is None else iso(e), "end_estimated": est,
-                    "minutes": minutes((now_ts if e is None else e) - s), "severity": sev, "status": status,
-                    "category": cat, "planned": planned, "reason": reason, "cause": code}
-                   for s, e, est, sev, status, cat, planned, reason, code in recent[:RECENT]],
+        "recent": [
+            {
+                "start": iso(s),
+                "end": None if e is None else iso(e),
+                "end_estimated": est,
+                "minutes": minutes((now_ts if e is None else e) - s),
+                "severity": sev,
+                "status": status,
+                "category": cat,
+                "planned": planned,
+                "reason": reason,
+                "cause": code,
+            }
+            for s, e, est, sev, status, cat, planned, reason, code in recent[:RECENT]
+        ],
         "starts_by_hour": hours,
     }
 
 
 # ---------- spans of time ----------
+
 
 def merged(spans: Iterable, pad: float) -> list:
     """Sorted spans, those within pad of each other joined."""
@@ -284,6 +349,7 @@ def binned(spans: list, edges: list) -> list:
 
 # ---------- London days and their names ----------
 
+
 def lt(ts: float) -> dt.datetime:
     return dt.datetime.fromtimestamp(ts, UTC).astimezone(LONDON)
 
@@ -315,17 +381,22 @@ def date_range(d0: dt.date, d1: dt.date) -> str:
 # ---------- periods over the month payloads ----------
 
 SPAN_DAYS = {"1d": 1, "7d": 7, "30d": 30, "90d": 90, "365d": 365}
-SPAN_WORDS = {"1d": "the last 24 hours", "7d": "the last 7 days", "30d": "the last 30 days", "90d": "the last 90 days",
-              "365d": "the last year"}
+SPAN_WORDS = {
+    "1d": "the last 24 hours",
+    "7d": "the last 7 days",
+    "30d": "the last 30 days",
+    "90d": "the last 90 days",
+    "365d": "the last year",
+}
 LINE_ID = re.compile(r"[a-z0-9][a-z0-9-]{0,59}")
 CAUSE_ID = re.compile(r"[a-z0-9][a-z0-9-]{0,39}")
-MONTH_ID = re.compile(r"[0-9]{4}-(?:0[1-9]|1[0-2])")   # ASCII digits: \d takes any script
+MONTH_ID = re.compile(r"[0-9]{4}-(?:0[1-9]|1[0-2])")  # ASCII digits: \d takes any script
 DATE_ID = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 EARLIEST = dt.date(2000, 1, 1)
-MAX_PARAM = 32              # characters of a query value read
-WATCHED_ENOUGH = 0.8        # under this share of a period (or the one before) watched, no changes are given
+MAX_PARAM = 32  # characters of a query value read
+WATCHED_ENOUGH = 0.8  # under this share of a period (or the one before) watched, no changes are given
 TOP_CAUSES = 6
-CORE = ((7, 9.5), (16.5, 19))   # TfL's weekday core times, London hours
+CORE = ((7, 9.5), (16.5, 19))  # TfL's weekday core times, London hours
 
 
 def _dict(value) -> dict:
@@ -377,8 +448,14 @@ def parse_index(raw) -> dict | None:
             continue
         seen.add(line["id"])
         shared = [s for s in _list(line.get("shared_with")) if isinstance(s, str) and LINE_ID.fullmatch(s)]
-        lines.append({"id": line["id"], "name": str(line.get("name") or line["id"])[:60],
-                      "mode": line.get("mode") if isinstance(line.get("mode"), str) else None, "shared_with": shared})
+        lines.append(
+            {
+                "id": line["id"],
+                "name": str(line.get("name") or line["id"])[:60],
+                "mode": line.get("mode") if isinstance(line.get("mode"), str) else None,
+                "shared_with": shared,
+            }
+        )
     causes = {}
     given = raw.get("causes", CAUSE_LABELS)
     # [{"code", "label"}] as the index serves them; a {code: label} mapping is read too
@@ -404,22 +481,46 @@ def parse_month(raw) -> dict | None:
             continue
         lid, s, e, sev, cat, planned, src = x[:7]
         cause = x[7] if len(x) > 7 else None
-        if (not isinstance(lid, str) or not LINE_ID.fullmatch(lid) or not _isint(s) or src not in SOURCES
-                or (e is not None and (not _isint(e) or e < s))):
+        if (
+            not isinstance(lid, str)
+            or not LINE_ID.fullmatch(lid)
+            or not _isint(s)
+            or src not in SOURCES
+            or (e is not None and (not _isint(e) or e < s))
+        ):
             continue
         cat = cat_of(cat)
-        eps.append((lid, s, e, sev if _isint(sev) else None, cat, bool(planned) and cat != "info", src,
-                    cause if isinstance(cause, str) and CAUSE_ID.fullmatch(cause) else None))
+        eps.append(
+            (
+                lid,
+                s,
+                e,
+                sev if _isint(sev) else None,
+                cat,
+                bool(planned) and cat != "info",
+                src,
+                cause if isinstance(cause, str) and CAUSE_ID.fullmatch(cause) else None,
+            )
+        )
     watched = {}
     for src, spans in _dict(raw.get("watched")).items():
         if src in SOURCES:
-            watched[src] = [(a, b) for a, b in (s for s in _list(spans) if isinstance(s, list) and len(s) == 2)
-                            if _isint(a) and _isint(b) and b > a]
+            watched[src] = [
+                (a, b)
+                for a, b in (s for s in _list(spans) if isinstance(s, list) and len(s) == 2)
+                if _isint(a) and _isint(b) and b > a
+            ]
     return {"eps": eps, "watched": watched}
 
 
-def gather(months: Mapping[str, Any], index: Mapping | None, a: float, b: float, now_ts: float,
-           sources: Iterable[str] = SOURCES) -> dict:
+def gather(
+    months: Mapping[str, Any],
+    index: Mapping | None,
+    a: float,
+    b: float,
+    now_ts: float,
+    sources: Iterable[str] = SOURCES,
+) -> dict:
     """The episodes and watched spans of the months overlapping [a, b]: {"eps": {line: [episode]}, "watched":
     {source: spans}}. An episode spanning months is in each; the copy with an end wins. An open one (end None) runs
     to the last time its source watched (at most now).
@@ -456,9 +557,20 @@ def gather(months: Mapping[str, Any], index: Mapping | None, a: float, b: float,
         ongoing = e is None
         if ongoing:
             e = max(min(now_ts, last.get(src) or s), s)
-        eps.setdefault(lid, []).append({"start": float(s), "end": float(e), "ongoing": ongoing, "estimated": False,
-                                        "severity": sev, "status": SEVERITY_NAMES.get(sev, "Disrupted"), "cat": cat,
-                                        "planned": planned, "src": src, "cause": cause})
+        eps.setdefault(lid, []).append(
+            {
+                "start": float(s),
+                "end": float(e),
+                "ongoing": ongoing,
+                "estimated": False,
+                "severity": sev,
+                "status": SEVERITY_NAMES.get(sev, "Disrupted"),
+                "cat": cat,
+                "planned": planned,
+                "src": src,
+                "cause": cause,
+            }
+        )
     for v in eps.values():
         v.sort(key=lambda e: e["start"])
     return {"eps": eps, "watched": watched}
@@ -521,19 +633,19 @@ def parse_period(query: Mapping, today: dt.date) -> tuple:
 
 class Period(TypedDict):
     span: str
-    end: str | dt.date    # "now" or the London day it ends on
-    n: int                # days
-    t0: float             # the period is [t0, t1]
+    end: str | dt.date  # "now" or the London day it ends on
+    n: int  # days
+    t0: float  # the period is [t0, t1]
     t1: float
-    p0: float             # the period before it is [p0, t0]
+    p0: float  # the period before it is [p0, t0]
     label: str
-    before: str           # the period before, in words
-    prev: str             # the end a step back ("YYYY-MM-DD"), "" at the start of the history
-    next: str             # a step on: "now", a date, or "" when it ends now
+    before: str  # the period before, in words
+    prev: str  # the end a step back ("YYYY-MM-DD"), "" at the start of the history
+    next: str  # a step on: "now", a date, or "" when it ends now
     today: dt.date
-    mids: list            # [(epoch, date)] of the London midnights inside it
-    days: list            # t0, those midnights and t1: the London days in it
-    first: float | None   # the start of the history
+    mids: list  # [(epoch, date)] of the London midnights inside it
+    days: list  # t0, those midnights and t1: the London days in it
+    first: float | None  # the start of the history
 
 
 def period_of(span: str, end, now_ts: float, first: float | None) -> Period:
@@ -557,9 +669,22 @@ def period_of(span: str, end, now_ts: float, first: float | None) -> Period:
         nxt = "now" if fwd >= today else fwd.isoformat()
     prev = back.isoformat() if (first is None or t0 > first) and back >= EARLIEST else ""
     mids = [(float(t), d) for t, d in _midnights(t0, t1)]
-    return {"span": span, "end": end, "n": n, "t0": t0, "t1": t1, "p0": p0, "label": label, "before": before,
-            "prev": prev, "next": nxt, "today": today, "mids": mids, "days": [t0] + [t for t, _ in mids] + [t1],
-            "first": first}
+    return {
+        "span": span,
+        "end": end,
+        "n": n,
+        "t0": t0,
+        "t1": t1,
+        "p0": p0,
+        "label": label,
+        "before": before,
+        "prev": prev,
+        "next": nxt,
+        "today": today,
+        "mids": mids,
+        "days": [t0] + [t for t, _ in mids] + [t1],
+        "first": first,
+    }
 
 
 def core_spans(p: Mapping) -> list:
@@ -592,15 +717,23 @@ def line_period(eps: list, cover: list, a: float, b: float, extra: Mapping | Non
     spans = cut(shown)
     dis = total(spans)
     unplanned = [e for e in shown if not e["planned"]]
-    f = {"w": w, "dis": dis, "n_unpl": len(unplanned), "n_pl": len(shown) - len(unplanned),
-         "good": 100 - min(dis / w, 1.0) * 100 if w > 0 else None}
+    f = {
+        "w": w,
+        "dis": dis,
+        "n_unpl": len(unplanned),
+        "n_pl": len(shown) - len(unplanned),
+        "good": 100 - min(dis / w, 1.0) * 100 if w > 0 else None,
+    }
     if extra is None:
         return f
     f["by_cat"] = collections.Counter(e["cat"] for e in shown)
     durs = sorted(e["end"] - e["start"] for e in shown)
     f["avg"] = sum(durs) / len(durs) if durs else None
-    f["median"] = (durs[len(durs) // 2] if len(durs) % 2 else (durs[len(durs) // 2 - 1] + durs[len(durs) // 2]) / 2
-                   ) if durs else None
+    f["median"] = (
+        (durs[len(durs) // 2] if len(durs) % 2 else (durs[len(durs) // 2 - 1] + durs[len(durs) // 2]) / 2)
+        if durs
+        else None
+    )
     f["longest"] = max(unplanned, key=lambda e: e["end"] - e["start"]) if unplanned else None
     f["core"] = total(intersect(spans, extra["core"])) / dis if dis > 0 else None
     f["per_day"] = [total(x) for x in binned(cut(unplanned), extra["days"])]
@@ -617,7 +750,7 @@ def line_period(eps: list, cover: list, a: float, b: float, extra: Mapping | Non
             layers.setdefault((e["cat"], e["planned"]), []).append(e)
         lay = {k: [total(x) for x in binned(cut(v), extra["bins"])] for k, v in layers.items()}
         chart = []
-        for i, u in enumerate(union):   # split each bin's disrupted time in proportion: categories can overlap
+        for i, u in enumerate(union):  # split each bin's disrupted time in proportion: categories can overlap
             whole = sum(v[i] for v in lay.values())
             chart.append({k: u * v[i] / whole for k, v in lay.items() if v[i] > 0} if whole > 0 else {})
         f["chart"] = chart
@@ -630,9 +763,17 @@ def part_key(cat: str, planned: bool) -> str:
 
 
 def episode_fig(e: Mapping) -> dict:
-    return {"status": e["status"], "severity": e["severity"], "category": e["cat"], "cause": e["cause"],
-            "source": e["src"], "start": e["start"], "end": e["end"], "duration_s": e["end"] - e["start"],
-            "ongoing": e["ongoing"]}
+    return {
+        "status": e["status"],
+        "severity": e["severity"],
+        "category": e["cat"],
+        "cause": e["cause"],
+        "source": e["src"],
+        "start": e["start"],
+        "end": e["end"],
+        "duration_s": e["end"] - e["start"],
+        "ongoing": e["ongoing"],
+    }
 
 
 def cause_name(code, labels: Mapping) -> str:
@@ -656,16 +797,39 @@ def period_figures(idx: Mapping, data: Mapping, p: Mapping, now_ts: float) -> di
     seen = {s: clip(data["watched"].get(s, []), a, b) for s in SOURCES}
     any_cov = [tuple(s) for s in merged(seen[SOURCE_FOI] + seen[SOURCE_LIVE], 0)]
     share = total(any_cov) / wall
-    before = [tuple(s) for s in merged(clip(data["watched"].get(SOURCE_FOI, []) + data["watched"].get(SOURCE_LIVE, []),
-                                            p0, a), 0)]
+    before = [
+        tuple(s)
+        for s in merged(clip(data["watched"].get(SOURCE_FOI, []) + data["watched"].get(SOURCE_LIVE, []), p0, a), 0)
+    ]
     share_before = total(before) / (a - p0)
-    fig = {"span": p["span"], "end": p["end"] if p["end"] == "now" else p["end"].isoformat(), "t0": a, "t1": b,
-           "p0": p0, "watched": {SOURCE_FOI: total(seen[SOURCE_FOI]) / wall,
-                                 SOURCE_LIVE: total(seen[SOURCE_LIVE]) / wall, "any": share, "before": share_before},
-           "unwatched": [list(s) for s in complement(any_cov, a, b)], "comparable": False, "lines_watched": 0,
-           "good_pct": None, "unplanned": 0, "planned": 0, "disrupted_s": 0, "before": None, "most_disrupted": None,
-           "longest_unplanned": None, "busiest_day": None, "causes": [], "other_causes": None, "bins": None,
-           "lines": []}
+    fig = {
+        "span": p["span"],
+        "end": p["end"] if p["end"] == "now" else p["end"].isoformat(),
+        "t0": a,
+        "t1": b,
+        "p0": p0,
+        "watched": {
+            SOURCE_FOI: total(seen[SOURCE_FOI]) / wall,
+            SOURCE_LIVE: total(seen[SOURCE_LIVE]) / wall,
+            "any": share,
+            "before": share_before,
+        },
+        "unwatched": [list(s) for s in complement(any_cov, a, b)],
+        "comparable": False,
+        "lines_watched": 0,
+        "good_pct": None,
+        "unplanned": 0,
+        "planned": 0,
+        "disrupted_s": 0,
+        "before": None,
+        "most_disrupted": None,
+        "longest_unplanned": None,
+        "busiest_day": None,
+        "causes": [],
+        "other_causes": None,
+        "bins": None,
+        "lines": [],
+    }
     if share <= 0:
         return fig
     bins = None
@@ -688,17 +852,31 @@ def period_figures(idx: Mapping, data: Mapping, p: Mapping, now_ts: float) -> di
         return sum(r[which][key] for r in rows)
 
     w, dis, w_b, dis_b = tot("w"), tot("dis"), tot("w", 2), tot("dis", 2)
-    fig.update(comparable=comparable, lines_watched=len(rows), good_pct=100 - min(dis / w, 1) * 100 if w else None,
-               unplanned=tot("n_unpl"), planned=tot("n_pl"), disrupted_s=dis)
+    fig.update(
+        comparable=comparable,
+        lines_watched=len(rows),
+        good_pct=100 - min(dis / w, 1) * 100 if w else None,
+        unplanned=tot("n_unpl"),
+        planned=tot("n_pl"),
+        disrupted_s=dis,
+    )
     if comparable:
-        fig["before"] = {"good_pct": 100 - min(dis_b / w_b, 1) * 100 if w_b else None, "unplanned": tot("n_unpl", 2),
-                         "planned": tot("n_pl", 2), "disrupted_s": dis_b}
+        fig["before"] = {
+            "good_pct": 100 - min(dis_b / w_b, 1) * 100 if w_b else None,
+            "unplanned": tot("n_unpl", 2),
+            "planned": tot("n_pl", 2),
+            "disrupted_s": dis_b,
+        }
     names = {line["id"]: short_name(line["name"]) for line in idx["lines"]}
     worst = max(rows, key=lambda r: (r[1]["dis"] / r[1]["w"], r[1]["dis"]))
     if worst[1]["dis"] > 0:
         lid = worst[0]["id"]
-        fig["most_disrupted"] = {"line": lid, "name": names[lid], "share": worst[1]["dis"] / worst[1]["w"],
-                                 "disrupted_s": worst[1]["dis"]}
+        fig["most_disrupted"] = {
+            "line": lid,
+            "name": names[lid],
+            "share": worst[1]["dis"] / worst[1]["w"],
+            "disrupted_s": worst[1]["dis"],
+        }
     longs = [(r[1]["longest"], r[0]) for r in rows if r[1]["longest"]]
     if longs:
         e, line = max(longs, key=lambda x: x[0]["end"] - x[0]["start"])
@@ -708,8 +886,13 @@ def period_figures(idx: Mapping, data: Mapping, p: Mapping, now_ts: float) -> di
         if per_day and max(per_day) > 0:
             i = per_day.index(max(per_day))
             day = lt((p["days"][i] + p["days"][i + 1]) / 2).date()
-            fig["busiest_day"] = {"date": day.isoformat(), "t0": p["days"][i], "t1": p["days"][i + 1],
-                                  "unplanned_s": per_day[i], "lines": sum(1 for r in rows if r[1]["per_day"][i] > 0)}
+            fig["busiest_day"] = {
+                "date": day.isoformat(),
+                "t0": p["days"][i],
+                "t1": p["days"][i + 1],
+                "unplanned_s": per_day[i],
+                "lines": sum(1 for r in rows if r[1]["per_day"][i] > 0),
+            }
 
     # causes, network-wide: by number of disruptions, then time
     labels = idx["causes"]
@@ -720,14 +903,19 @@ def period_figures(idx: Mapping, data: Mapping, p: Mapping, now_ts: float) -> di
     if n:
         ranked = sorted(n.items(), key=lambda kv: (-kv[1], -s[kv[0]]))
         shown, rest = ranked[:TOP_CAUSES], ranked[TOP_CAUSES:]
-        if rest and None in dict(rest):   # Unknown is always shown, honestly
+        if rest and None in dict(rest):  # Unknown is always shown, honestly
             shown = shown[:-1] + [(None, n[None])]
             rest = [kv for kv in ranked if kv not in shown]
-        fig["causes"] = [{"code": code, "label": cause_name(code, labels), "count": count, "seconds": s[code]}
-                         for code, count in shown]
+        fig["causes"] = [
+            {"code": code, "label": cause_name(code, labels), "count": count, "seconds": s[code]}
+            for code, count in shown
+        ]
         if rest:
-            fig["other_causes"] = {"causes": len(rest), "count": sum(c for _, c in rest),
-                                   "seconds": sum(s[k] for k, _ in rest)}
+            fig["other_causes"] = {
+                "causes": len(rest),
+                "count": sum(c for _, c in rest),
+                "seconds": sum(s[k] for k, _ in rest),
+            }
 
     # the chart: line-time disrupted per bin, all lines added together, split by category and planned
     if bins:
@@ -735,10 +923,19 @@ def period_figures(idx: Mapping, data: Mapping, p: Mapping, now_ts: float) -> di
         for _, f, _ in rows:
             for i, part in enumerate(f["chart"] or ()):
                 sums[i].update(part)
-        fig["bins"] = {"per": "day" if p["n"] <= 30 else "week", "items": [
-            {"t0": bins[i], "t1": bins[i + 1], "disrupted_s": sum(sm.values()),
-             "lines": sum(1 for _, f, _ in rows if f["chart"] and f["chart"][i]),
-             "parts": {part_key(*k): v for k, v in sm.items()}} for i, sm in enumerate(sums)]}
+        fig["bins"] = {
+            "per": "day" if p["n"] <= 30 else "week",
+            "items": [
+                {
+                    "t0": bins[i],
+                    "t1": bins[i + 1],
+                    "disrupted_s": sum(sm.values()),
+                    "lines": sum(1 for _, f, _ in rows if f["chart"] and f["chart"][i]),
+                    "parts": {part_key(*k): v for k, v in sm.items()},
+                }
+                for i, sm in enumerate(sums)
+            ],
+        }
 
     # one row per line
     for line, f, fb in rows:
@@ -747,11 +944,26 @@ def period_figures(idx: Mapping, data: Mapping, p: Mapping, now_ts: float) -> di
         if ranked:
             code = ranked[0][0]
             top = {"code": code, "label": "Unknown" if code is None else labels.get(code, code)}
-        fig["lines"].append({
-            "id": line["id"], "name": names[line["id"]], "mode": line["mode"], "shared": bool(line["shared_with"]),
-            "watched_s": f["w"], "disrupted_s": f["dis"], "good_pct": f["good"],
-            "good_pct_before": fb["good"] if comparable else None, "unplanned": f["n_unpl"], "planned": f["n_pl"],
-            "by_category": {c: f["by_cat"].get(c, 0) for c in COUNTED}, "avg_s": f["avg"], "median_s": f["median"],
-            "longest_unplanned": episode_fig(f["longest"]) if f["longest"] else None, "core_share": f["core"],
-            "days": f["days"], "days_in_period": len(f["per_day"]), "top_cause": top})
+        fig["lines"].append(
+            {
+                "id": line["id"],
+                "name": names[line["id"]],
+                "mode": line["mode"],
+                "shared": bool(line["shared_with"]),
+                "watched_s": f["w"],
+                "disrupted_s": f["dis"],
+                "good_pct": f["good"],
+                "good_pct_before": fb["good"] if comparable else None,
+                "unplanned": f["n_unpl"],
+                "planned": f["n_pl"],
+                "by_category": {c: f["by_cat"].get(c, 0) for c in COUNTED},
+                "avg_s": f["avg"],
+                "median_s": f["median"],
+                "longest_unplanned": episode_fig(f["longest"]) if f["longest"] else None,
+                "core_share": f["core"],
+                "days": f["days"],
+                "days_in_period": len(f["per_day"]),
+                "top_cause": top,
+            }
+        )
     return fig

@@ -24,7 +24,7 @@ dependencies = [
     "google-cloud-firestore>=2.16",
     # The contract's FastMCP API (stateless_http, json_response, transport_security in the constructor) is 1.x;
     # 2.x renamed it to MCPServer and moved those options, so stay on 1.x until the MCP layer moves.
-    "mcp>=1.23,<2",
+    "mcp>=1.30,<2",
 ]
 
 [project.scripts]

@@ -1260,7 +1260,7 @@ requires-dist = [
     { name = "google-cloud-firestore", specifier = ">=2.16" },
     { name = "httptools", specifier = ">=0.6" },
     { name = "httpx", specifier = ">=0.27" },
-    { name = "mcp", specifier = ">=1.23,<2" },
+    { name = "mcp", specifier = ">=1.30,<2" },
     { name = "uvicorn", specifier = ">=0.30" },
 ]
 

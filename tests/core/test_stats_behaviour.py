@@ -36,7 +36,7 @@ def test_parse_index_defaults():
     assert idx["months"] == {"2025-06", "2025-07"}
     assert idx["first"] == month_bounds("2025-06")[0]
     assert idx["lines"] == [{"id": "central", "name": "central", "mode": None, "shared_with": []}]
-    assert idx["causes"] == CAUSE_LABELS   # an index without causes gets the rules' labels
+    assert idx["causes"] == CAUSE_LABELS  # an index without causes gets the rules' labels
     assert stats.parse_index({"months": [], "first": 1700000000})["first"] == 1700000000.0
     assert stats.parse_index([]) is None
 
@@ -45,11 +45,19 @@ def test_parse_month_reads_eight_fields_of_eleven():
     payload = MONTHS["2025-10"]
     short = dict(payload, episodes=[r[:8] for r in payload["episodes"]])
     assert stats.parse_month(payload) == stats.parse_month(short)
-    bad = {"episodes": [["central", 1, 0, 9, "delays", 0, "a"], ["central", "x", 2, 9, "delays", 0, "a"],
-                        ["central", 1, 2, 9, "delays", 0, "z"], ["central", 1, 2, 9, "odd", 1, "a", "Not A Code"]],
-           "watched": {"a": [[5, 1], [1, 5], [1]], "q": [[1, 2]]}}
-    assert stats.parse_month(bad) == {"eps": [("central", 1, 2, 9, "other", True, "a", None)],
-                                      "watched": {"a": [(1, 5)]}}
+    bad = {
+        "episodes": [
+            ["central", 1, 0, 9, "delays", 0, "a"],
+            ["central", "x", 2, 9, "delays", 0, "a"],
+            ["central", 1, 2, 9, "delays", 0, "z"],
+            ["central", 1, 2, 9, "odd", 1, "a", "Not A Code"],
+        ],
+        "watched": {"a": [[5, 1], [1, 5], [1]], "q": [[1, 2]]},
+    }
+    assert stats.parse_month(bad) == {
+        "eps": [("central", 1, 2, 9, "other", True, "a", None)],
+        "watched": {"a": [(1, 5)]},
+    }
 
 
 def test_gather_takes_parsed_months():
@@ -108,11 +116,25 @@ def test_line_report_ignores_open_rows_and_other_sources():
     snap, open_eps = fx.snapshot(MONTHS, NOW)
     base = stats.line_report(LINES["central"], snap, open_eps, NOW)
     noisy = copy.deepcopy(snap)
-    for e in open_eps:   # as /v1/months serves them: open episodes added to the months
-        noisy["2025-11"]["episodes"].append([e["line"], e["start"], None, e["severity"], e["category"],
-                                             int(e["planned"]), "a", None, e["status"], e["reason"], 0])
-    noisy["2025-11"]["episodes"].append(["central", NOW - 3600, NOW - 60, 2, "suspended", 0, "f", None,
-                                         "Suspended", None, 0])
+    for e in open_eps:  # as /v1/months serves them: open episodes added to the months
+        noisy["2025-11"]["episodes"].append(
+            [
+                e["line"],
+                e["start"],
+                None,
+                e["severity"],
+                e["category"],
+                int(e["planned"]),
+                "a",
+                None,
+                e["status"],
+                e["reason"],
+                0,
+            ]
+        )
+    noisy["2025-11"]["episodes"].append(
+        ["central", NOW - 3600, NOW - 60, 2, "suspended", 0, "f", None, "Suspended", None, 0]
+    )
     assert stats.line_report(LINES["central"], noisy, open_eps, NOW) == base
 
 
@@ -128,8 +150,18 @@ def test_line_report_reads_back_only_as_far_as_needed():
 def test_starts_by_hour_in_london_time():
     # 00:30 UTC (01:30 BST) and 01:10 UTC (01:10 GMT), the night the clocks went back: both start at 01 in London
     snap, open_eps = fx.snapshot(MONTHS, NOW)
-    only = {k: dict(v, episodes=[r for r in v["episodes"] if r[0] != "elizabeth" or r[1] in (
-        fx.ts("2025-10-26T00:30:00+00:00"), fx.ts("2025-10-26T01:10:00+00:00"))]) for k, v in snap.items()}
+    only = {
+        k: dict(
+            v,
+            episodes=[
+                r
+                for r in v["episodes"]
+                if r[0] != "elizabeth"
+                or r[1] in (fx.ts("2025-10-26T00:30:00+00:00"), fx.ts("2025-10-26T01:10:00+00:00"))
+            ],
+        )
+        for k, v in snap.items()
+    }
     hours = stats.line_report(LINES["elizabeth"], only, open_eps, NOW)["starts_by_hour"]
     assert hours[1] == 2 and sum(hours) == 2
 
@@ -181,16 +213,21 @@ def test_core_share_at_most_one():
     # disrupted through both of Tuesday's core times, the period starting at 23:30 on Monday
     now = london_ts(2026, 10, 20, 23, 30)
     idx = stats.parse_index({"months": ["2026-10"], "lines": [{"id": "central", "name": "Central", "mode": "tube"}]})
-    payload = {"month": "2026-10", "watched": {"a": [[now - 3 * 86400, now]]}, "episodes": [
-        ["central", london_ts(2026, 10, 20, 7), london_ts(2026, 10, 20, 9, 30), 9, "delays", 0, "a", "signal"],
-        ["central", london_ts(2026, 10, 20, 16, 30), london_ts(2026, 10, 20, 19), 9, "delays", 0, "a", "signal"]]}
+    payload = {
+        "month": "2026-10",
+        "watched": {"a": [[now - 3 * 86400, now]]},
+        "episodes": [
+            ["central", london_ts(2026, 10, 20, 7), london_ts(2026, 10, 20, 9, 30), 9, "delays", 0, "a", "signal"],
+            ["central", london_ts(2026, 10, 20, 16, 30), london_ts(2026, 10, 20, 19), 9, "delays", 0, "a", "signal"],
+        ],
+    }
     p = stats.period_of("1d", "now", now, None)
     fig = stats.period_figures(idx, stats.gather({"2026-10": payload}, idx, p["p0"], p["t1"], now), p, now)
     assert fig["lines"][0]["core_share"] == 1.0
 
 
 def test_gather_reads_only_the_sources_given():
-    p = stats.period_of("365d", dt.date(2025, 6, 30), NOW, IDX["first"])   # the FOI release, a gap, live recording
+    p = stats.period_of("365d", dt.date(2025, 6, 30), NOW, IDX["first"])  # the FOI release, a gap, live recording
     both = stats.gather(MONTHS, IDX, p["p0"], p["t1"], NOW)
     assert stats.gather(MONTHS, IDX, p["p0"], p["t1"], NOW, sources=("f", "a")) == both
     assert both["watched"]["f"] and any(e["src"] == "f" for v in both["eps"].values() for e in v)
@@ -213,25 +250,43 @@ def test_line_report_skips_what_is_not_well_formed():
         ["central", NOW - 600, "later", 9, "delays", 0, "a", None, "Minor Delays", "x", 0],
         ["central", NOW - 600, NOW - 900, 9, "delays", 0, "a", None, "Minor Delays", "x", 0],
         ["central", NOW - 600, NOW - 60, "9", "delays", 0, "a", None, "Minor Delays", "x", 0],
-        "not a row", ["central"]]
+        "not a row",
+        ["central"],
+    ]
     noisy["2025-11"]["watched"]["a"] += [[NOW - 60], ["a", "b"], [NOW, NOW - 60], "x"]
-    bad_open = [{"line": "central", "severity": 9, "status": "Minor Delays", "category": "delays", "planned": False,
-                 "start": "yesterday", "reason": "x"},
-                {"line": "central", "severity": None, "start": NOW - 60}, "not an episode"]
+    bad_open = [
+        {
+            "line": "central",
+            "severity": 9,
+            "status": "Minor Delays",
+            "category": "delays",
+            "planned": False,
+            "start": "yesterday",
+            "reason": "x",
+        },
+        {"line": "central", "severity": None, "start": NOW - 60},
+        "not an episode",
+    ]
     assert stats.line_report(LINES["central"], noisy, open_eps + bad_open, NOW) == base
 
 
 def test_line_report_open_start_as_iso_is_utc(monkeypatch):
     if not hasattr(time, "tzset"):
         pytest.skip("needs time.tzset")
-    monkeypatch.setenv("TZ", "America/New_York")   # the host's zone must not matter
+    monkeypatch.setenv("TZ", "America/New_York")  # the host's zone must not matter
     time.tzset()
     try:
         start = NOW - 3600
-        ep = {"line": "dlr", "severity": 9, "status": "Minor Delays", "category": "delays", "planned": False,
-              "reason": "Minor delays due to a signal failure."}
+        ep = {
+            "line": "dlr",
+            "severity": 9,
+            "status": "Minor Delays",
+            "category": "delays",
+            "planned": False,
+            "reason": "Minor delays due to a signal failure.",
+        }
         as_int = stats.line_report(LINES["dlr"], {}, [dict(ep, start=start)], NOW)
-        naive = stats.line_report(LINES["dlr"], {}, [dict(ep, start=fx.iso(start)[:-6])], NOW)   # no offset: UTC
+        naive = stats.line_report(LINES["dlr"], {}, [dict(ep, start=fx.iso(start)[:-6])], NOW)  # no offset: UTC
         assert naive == as_int and as_int["now"][0]["minutes"] == 60
     finally:
         monkeypatch.undo()
