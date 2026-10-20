@@ -150,7 +150,7 @@ def test_health_marks_a_dry_runs_closure():
     p = Parts(guard_mode="dry-run")
     p.mon.five = 50_000
     p.http.post("/internal/poll")
-    guard = p.http.get("/healthz").json()["guard"]
+    guard = p.http.get("/health").json()["guard"]
     assert p.inv.public and guard["mode"] == "dry-run" and guard["dry_run"] is True
     assert guard["closed_until"] == "2026-10-19T08:30:03+00:00" and guard["applied"] is None
 
@@ -239,11 +239,11 @@ def test_an_oversized_push_is_ignored(parts):
     assert r.status_code == 200 and r.json() == {"ok": False, "ignored": "push body too large"}
 
 
-# ---- GET /healthz ---------------------------------------------------------------------------------------------
+# ---- GET /health ---------------------------------------------------------------------------------------------
 
 
 def test_health_before_any_poll_is_503(parts):
-    r = parts.http.get("/healthz")
+    r = parts.http.get("/health")
     assert r.status_code == 503
     body = r.json()
     assert body["ok"] is False and body["last_poll"] is None and body["tfl_auth"] == "ok"
@@ -254,7 +254,7 @@ def test_health_after_a_poll(parts):
     parts.tfl.items = [payload({"central": [status(6, "Severe delays.")]})]
     parts.http.post("/internal/poll")
     parts.clock.t += 30
-    r = parts.http.get("/healthz")
+    r = parts.http.get("/health")
     assert r.status_code == 200 and r.headers["cache-control"] == "no-store"
     body = r.json()
     assert body == {
@@ -275,18 +275,18 @@ def test_health_after_a_poll(parts):
             "error": None,
         },
     }
-    assert parts.http.head("/healthz").status_code == 200
+    assert parts.http.head("/health").status_code == 200
 
 
 def test_health_goes_503_when_polls_stop(parts):
     parts.http.post("/internal/poll")
     parts.clock.t += 601
-    assert parts.http.get("/healthz").status_code == 503
+    assert parts.http.get("/health").status_code == 503
 
 
 def test_health_with_the_store_down(parts, monkeypatch):
     monkeypatch.setattr(parts.store, "get_state", lambda: (_ for _ in ()).throw(RuntimeError("down")))
-    r = parts.http.get("/healthz")
+    r = parts.http.get("/health")
     assert r.status_code == 503 and r.json()["error"] == "store"
 
 
@@ -302,11 +302,11 @@ def test_parts_are_built_from_settings(monkeypatch):
     settings = Settings(role="poller", store="memory", guard_mode="off", tfl_base_url="https://api.tfl.example")
     app = create_app(settings=settings, clock=lambda: T0)
     with TestClient(app) as http:
-        r = http.get("/healthz")
+        r = http.get("/health")
         assert r.status_code == 503 and r.json()["tfl_auth"] == "anonymous" and r.json()["guard"]["mode"] == "off"
     built = app.state.parts()
     assert isinstance(built.store, MemoryStore) and built.guard.mode == "off"
 
 
 def test_the_module_app_is_a_poller():
-    assert {route.path for route in poller_app.app.routes} >= {"/internal/poll", "/internal/budget", "/healthz"}
+    assert {route.path for route in poller_app.app.routes} >= {"/internal/poll", "/internal/budget", "/health"}

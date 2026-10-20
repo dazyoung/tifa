@@ -187,11 +187,11 @@ smoke_api() {
     esac
     return
   fi
-  http "$API_URL/healthz"
+  http "$API_URL/health"
   case $CODE in
-    200) pass "API /healthz 200" ;;
-    503) pass "API /healthz 503: no poll in the last 10 minutes (expected while the Scheduler is paused)" ;;
-    *) fail "API /healthz answered ${CODE:-nothing}" ;;
+    200) pass "API /health 200" ;;
+    503) pass "API /health 503: no poll in the last 10 minutes (expected while the Scheduler is paused)" ;;
+    *) fail "API /health answered ${CODE:-nothing}" ;;
   esac
 
   http "$API_URL/v1/meta"
@@ -221,7 +221,7 @@ smoke_api() {
 }
 
 smoke_poller() {
-  http "$POLLER_URL/healthz"
+  http "$POLLER_URL/health"
   case $CODE in
     401 | 403 | 404) pass "poller refuses anonymous requests ($CODE)" ;;
     *) fail "poller answered an anonymous request with ${CODE:-nothing}" ;;
@@ -236,15 +236,15 @@ smoke_poller() {
   local token
   if token=$(gcloud auth print-identity-token 2>/dev/null) && [ -n "$token" ]; then
     CODE=$(printf 'Authorization: Bearer %s\n' "$token" \
-      | curl -s -o /dev/null -w '%{http_code}' --max-time 30 -H @- "$POLLER_URL/healthz" 2>/dev/null || true)
+      | curl -s -o /dev/null -w '%{http_code}' --max-time 30 -H @- "$POLLER_URL/health" 2>/dev/null || true)
     token=""
     case $CODE in
-      200 | 503) pass "poller /healthz with an identity token ($CODE)" ;;
-      403 | 404) info "skip  poller /healthz with an identity token: $CODE (ingress internal, or no run.invoker for you)" ;;
-      *) fail "poller /healthz with an identity token answered ${CODE:-nothing}" ;;
+      200 | 503) pass "poller /health with an identity token ($CODE)" ;;
+      403 | 404) info "skip  poller /health with an identity token: $CODE (ingress internal, or no run.invoker for you)" ;;
+      *) fail "poller /health with an identity token answered ${CODE:-nothing}" ;;
     esac
   else
-    info "skip  poller /healthz with an identity token (gcloud could not mint one)"
+    info "skip  poller /health with an identity token (gcloud could not mint one)"
   fi
 }
 

@@ -3,7 +3,7 @@
 The public API never reads the store per request: it reads a snapshot held in memory, refreshed from the store at
 most every ``state_ttl`` seconds (30 by default). A refresh reads `meta/state` (one document) and reloads only the
 months whose revision changed, so Firestore reads do not grow with traffic. Days of poll times (for /v1/coverage and
-/v1/changes) and the guard document (for /healthz) are read on demand and kept for a while.
+/v1/changes) and the guard document (for /health) are read on demand and kept for a while.
 
 Snapshots are immutable once built and swapped in whole, so a request reads one consistent snapshot however many
 refreshes happen meanwhile. One refresh runs at a time; other requests keep serving the current snapshot. A

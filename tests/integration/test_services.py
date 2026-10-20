@@ -47,7 +47,7 @@ def services():
 
 def test_scheduler_polls_over_http_and_the_api_serves_them(services):
     store, clock, poller, api, wall, mono = services
-    assert poller.get("/healthz").status_code == 503 and api.get("/healthz").status_code == 503  # no poll yet
+    assert poller.get("/health").status_code == 503 and api.get("/health").status_code == 503  # no poll yet
     for slot in range(FIRST // 60, LAST // 60 + 1):
         clock.t = slot * 60 + sc.jitter(slot)
         headers = {"X-CloudScheduler-ScheduleTime": scheduler_time(slot)}
@@ -60,7 +60,7 @@ def test_scheduler_polls_over_http_and_the_api_serves_them(services):
                 "slot": slot,
                 "reason": "recorded",
             }
-    health = poller.get("/healthz").json()
+    health = poller.get("/health").json()
     assert health["ok"] and health["last_slot"] == LAST // 60 and health["tfl_auth"] == "ok"
 
     first, last = FIRST + sc.jitter(FIRST // 60), int(clock.t)
@@ -78,7 +78,7 @@ def test_scheduler_polls_over_http_and_the_api_serves_them(services):
     coverage = api.get("/v1/coverage", params={"from": iso(first), "to": iso(last)}).json()["data"]
     assert coverage["days"] == [{"date": "2026-10-25", "polls": 120, "expected": 1440, "failed": []}]  # to excluded
     assert coverage["gaps"] == [] and coverage["coverage_pct"] == 100
-    assert api.get("/healthz").status_code == 200
+    assert api.get("/health").status_code == 200
 
 
 def test_a_slot_never_comes_from_a_clock_that_is_wrong(services):
@@ -114,14 +114,14 @@ class Invoker:
 
 @pytest.mark.parametrize(("mode", "closed"), [("dry-run", False), ("enforce", True)])
 def test_the_api_reports_what_the_guard_did(services, mode, closed):
-    """A dry run decides and records a closure but applies none, so /healthz must not say the API is closed."""
+    """A dry run decides and records a closure but applies none, so /health must not say the API is closed."""
     store, clock, _, api, wall, mono = services
     invoker = Invoker()
     guard = Guard(store, monitoring=Flood(), invoker=invoker, limits=settings().limits, mode=mode)
     run = guard.maybe_run(FIRST)
     assert run.trip == "requests_5min" and invoker.public is (mode == "dry-run")
     wall.t, mono.t = FIRST + 30, mono.t + 60
-    data = api.get("/healthz").json()["data"]["guard"]
+    data = api.get("/health").json()["data"]["guard"]
     assert data["mode"] == mode and data["heartbeat"] == iso(FIRST)
     assert data["closed_until"] == iso(FIRST + 1800) and data["closed"] is closed
 
@@ -131,7 +131,7 @@ def test_the_entry_point_starts_either_role_behind_the_proxy(role):
     app = entry.build_app(load_settings({"TIFA_ROLE": role, "TIFA_PROXY_HEADERS": "true"}))
     assert isinstance(app, entry.ProxyHeaders)
     with TestClient(app, base_url=BASE) as http:
-        r = http.get("/healthz", headers={"X-Forwarded-For": "198.51.100.7, 203.0.113.9"})
+        r = http.get("/health", headers={"X-Forwarded-For": "198.51.100.7, 203.0.113.9"})
         assert r.status_code == 503  # nothing polled in this process's own memory store
         if role == "api":
             meta = http.get("/v1/meta").json()

@@ -7,7 +7,7 @@
   4xx. After the poll, the guard runs if it is due; its failures never change the answer.
 - `POST /internal/budget`: budget notifications pushed by Pub/Sub. 200 once handled, and for pushes that are not
   budget notifications (so Pub/Sub does not redeliver them); 503 if the guard's state could not be saved.
-- `GET /healthz`: the last poll, TfL auth and the guard; 503 when the last poll is over 10 minutes old.
+- `GET /health`: the last poll, TfL auth and the guard; 503 when the last poll is over 10 minutes old.
 
 The app's parts (store, TfL client, guard, clock) are built from the settings at start-up, or passed to
 `create_app()` by tests.
@@ -38,7 +38,7 @@ from tifa.store.base import Store
 log = logging.getLogger("tifa.poller")
 
 SCHEDULE_HEADER = "x-cloudscheduler-scheduletime"
-STALE_AFTER = 600  # /healthz answers 503 when the last poll is older than this
+STALE_AFTER = 600  # /health answers 503 when the last poll is older than this
 FUTURE_SLOTS = 2  # a schedule time more than this many minutes ahead of the clock is not believed
 NO_STORE = {"Cache-Control": "no-store"}
 
@@ -174,15 +174,16 @@ def create_app(
             headers=NO_STORE,
         )
 
-    @app.api_route("/healthz", methods=["GET", "HEAD"])
-    def healthz() -> JSONResponse:
+    # Not /healthz: Cloud Run reserves some paths that end in "z" and answers them itself.
+    @app.api_route("/health", methods=["GET", "HEAD"])
+    def health() -> JSONResponse:
         p = parts()
         now = int(p.clock())
         try:
             state = p.store.get_state()
             guard_doc = p.store.get_guard() or {}
         except Exception as exc:
-            log.error("healthz: store unreadable (%s)", type(exc).__name__)
+            log.error("health: store unreadable (%s)", type(exc).__name__)
             return JSONResponse({"ok": False, "role": "poller", "error": "store"}, status_code=503, headers=NO_STORE)
         last = state.last_poll if state else None
         age = now - last if last is not None else None
@@ -207,7 +208,7 @@ def create_app(
 
 
 def _guard_view(doc: dict[str, Any], mode: str) -> dict[str, Any]:
-    """The guard document for /healthz; `dry_run` is true when the closure shown is a dry run's (never applied)."""
+    """The guard document for /health; `dry_run` is true when the closure shown is a dry run's (never applied)."""
     d = normalise(doc)
 
     def at(key: str) -> str | None:

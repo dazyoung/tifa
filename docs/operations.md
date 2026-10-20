@@ -173,7 +173,7 @@ listed in the public rules, since a rule would publish them. Keep them in one re
 
 ## TfL app key
 
-Until a key exists the poller calls TfL anonymously (`/healthz` reports `tfl_auth: anonymous`).
+Until a key exists the poller calls TfL anonymously (`/health` reports `tfl_auth: anonymous`).
 
 Add or rotate a key:
 
@@ -190,7 +190,7 @@ gcloud secrets versions disable OLD_VERSION --secret=tifa-tfl-app-key
 ```
 
 To roll back a bad key, set `TFL_APP_KEY_VERSION` back (re-enable that version first if you disabled it) and
-redeploy. If TfL rejects the key, the poller makes one anonymous request instead and `/healthz` reports
+redeploy. If TfL rejects the key, the poller makes one anonymous request instead and `/health` reports
 `tfl_auth: degraded`; recording continues.
 
 The key is never logged: the HTTP client's request logging is silenced and every log line is scrubbed of
@@ -281,7 +281,7 @@ The worst case under abuse is held near the budget by the three layers above. Wh
 
 | Symptom | Look at |
 | --- | --- |
-| `/healthz` 503 | The last poll is over 10 minutes old: is the Scheduler job enabled? Poller logs: `gcloud run services logs read tifa-poller --region=REGION` |
+| `/health` 503 | The last poll is over 10 minutes old: is the Scheduler job enabled? Poller logs: `gcloud run services logs read tifa-poller --region=REGION` |
 | Scheduler attempts fail with 401 or 403 | `infra/post-deploy.sh` (invoker binding, target URL and audience) |
 | Scheduler attempts fail with 502 | TfL was unreachable or sent a bad payload; the slot is recorded as failed and retried within the minute |
 | API answers 403 to everyone | Closed by the guard or the budget (see `guard/state`), or `infra/post-deploy.sh` has not run yet |

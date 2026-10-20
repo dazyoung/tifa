@@ -117,7 +117,7 @@ def test_show_summarises_a_closure():
     assert "note" not in summary
 
 
-def test_show_counts_a_closure_as_closed_only_once_applied_as_healthz_does():
+def test_show_counts_a_closure_as_closed_only_once_applied_as_health_does():
     code, report, *_ = run(["show"], stored(closure("requests_5min", NOW + 1800, mode="dry-run", applied=None)))
     summary = report["summary"]
     assert code == 0 and summary["closed"] is False and summary["decided"] is True and summary["mode"] == "dry-run"

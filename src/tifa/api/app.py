@@ -1,4 +1,4 @@
-"""The public API: /v1/*, /healthz, /docs and /openapi.json, with the MCP server at /mcp.
+"""The public API: /v1/*, /health, /docs and /openapi.json, with the MCP server at /mcp.
 
 Requests pass through the Gate (an ASGI middleware) before anything else:
 
@@ -78,7 +78,7 @@ Send = Callable[[MutableMapping[str, Any]], Awaitable[None]]
 ASGIApp = Callable[[Scope, Receive, Send], Awaitable[None]]
 McpFactory = Callable[[ReadModel], Any]
 
-HEALTH_MAX_AGE = 600  # seconds since the last poll before /healthz answers 503
+HEALTH_MAX_AGE = 600  # seconds since the last poll before /health answers 503
 API_METHODS = ("GET", "HEAD")
 # Every method but OPTIONS goes on to the MCP app, which answers anything but POST with its own 405 (stateless JSON
 # mode has no event stream to open and no session to end).
@@ -596,7 +596,7 @@ def _fixed(cc: str) -> Callable[[dict[str, Any], int], str]:
 
 
 def _guard_summary(doc: Any, now: int) -> dict[str, Any]:
-    """What /healthz shows of the guard document: when it last ran and whether it has the API closed."""
+    """What /health shows of the guard document: when it last ran and whether it has the API closed."""
     out: dict[str, Any] = {"heartbeat": None, "heartbeat_age_s": None, "closed": None, "closed_until": None}
     if not isinstance(doc, dict):
         return out
@@ -752,8 +752,9 @@ def _add_routes(app: FastAPI, svc: Services) -> None:
         limits."""
         return _serve(request, svc, lambda: views.meta_view(rm), _fixed(CC_LONG))
 
-    @app.get("/healthz", tags=["about"], summary="Service health", responses={**_responses(), 503: {"model": Envelope}})
-    def healthz(request: Request) -> Response:
+    # Not /healthz: Cloud Run reserves some paths that end in "z" and answers them itself.
+    @app.get("/health", tags=["about"], summary="Service health", responses={**_responses(), 503: {"model": Envelope}})
+    def health(request: Request) -> Response:
         """The last poll and its age, the guard's heartbeat and the TfL key state. 503 when the last poll is
         more than 10 minutes old."""
         snap, now = rm.snapshot(), rm.now()
