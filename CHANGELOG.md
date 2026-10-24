@@ -7,6 +7,9 @@ The REST API is versioned separately (`/v1`); breaking API changes get a new pre
 
 ### Added
 
+- Design for recording National Rail operator disruptions from National Rail Enquiries' Knowledgebase feeds,
+  proposed and not built yet: [ADR-0001](docs/decisions/ADR-0001-national-rail-operator-disruptions.md) (the first
+  record in `docs/decisions/`) and [the plan](docs/plan/national-rail.md).
 - Project scaffold: uv project for Python 3.12+, MIT licence, security policy.
 - `tifa.config`: settings from environment variables with safe local defaults, Cloud Run defaults and validation;
   fair-use and guard limits overridable through `TIFA_*` variables.
