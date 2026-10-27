@@ -14,7 +14,7 @@ classifiers = [
     "Private :: Do Not Upload",
 ]
 dependencies = [
-    "fastapi>=0.115",
+    "fastapi>=0.156.1",
     # Plain uvicorn with the httptools parser: [standard] would add uvloop, watchfiles, websockets and PyYAML
     # (about 20 MB in the image) for no gain at this traffic.
     "uvicorn>=0.30",
