@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -354,7 +354,7 @@ wheels = [
 
 [[package]]
 name = "fastapi"
-version = "0.149.0"
+version = "0.156.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "annotated-doc" },
@@ -364,9 +364,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "typing-inspection" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b9/37/6e7ec4dbe12d9721902066ddb83dd9c6e7adb1cee81e094502c43024e4d1/fastapi-0.149.0.tar.gz", hash = "sha256:aba5779358d0c5233759ddcddd84fe7269d71f775fd754b653b608f770558a41", size = 483369, upload-time = "2026-10-19T17:22:29.495Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1d/74/eb2eeca2185a17afaf31a12b7122fdde4e8783f58ee2164f6e2482a1e2a7/fastapi-0.156.1.tar.gz", hash = "sha256:9da53b0b8b2fd79e260da101dab73a0d6ce6b5e539bef515e5fc0e8abecc76e8", size = 493536, upload-time = "2026-10-20T18:24:08.537Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/20/6c/78c324bd6725f69ebbac46e0d6a9a59744e108cececac4c1c8500c567512/fastapi-0.149.0-py3-none-any.whl", hash = "sha256:fc4a5cf7e14f607a48eb1ab98147e9140943e88ccd0c8791d72c0a89b1159a35", size = 145182, upload-time = "2026-10-19T17:22:27.753Z" },
+    { url = "https://files.pythonhosted.org/packages/aa/c2/8e4cb1429b2d7196659e048d6a55f53b687663a704943459af33dca92142/fastapi-0.156.1-py3-none-any.whl", hash = "sha256:0422f86554a11df52f0b80c34e5ba2f1d415cd0bca0c0910fdd37df80d4b534a", size = 146673, upload-time = "2026-10-20T18:24:07.134Z" },
 ]
 
 [[package]]
@@ -1255,7 +1255,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "fastapi", specifier = ">=0.115" },
+    { name = "fastapi", specifier = ">=0.156.1" },
     { name = "google-auth", extras = ["requests"], specifier = ">=2.62.0" },
     { name = "google-cloud-firestore", specifier = ">=2.16" },
     { name = "httptools", specifier = ">=0.6" },
